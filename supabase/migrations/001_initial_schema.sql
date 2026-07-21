@@ -44,17 +44,21 @@ create policy "Admins can manage all profiles" on user_profiles
 
 -- Auto-create profile on signup
 create or replace function handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer set search_path = public as $func$
 begin
-  insert into user_profiles (id, full_name)
+  insert into public.user_profiles (id, full_name)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', new.email)
-  );
+  )
+  on conflict (id) do nothing;
+  return new;
+exception when others then
   return new;
 end;
-$$;
+$func$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
@@ -453,12 +457,12 @@ create policy "System can insert audit logs" on audit_logs
 -- ─── Updated_at Triggers ─────────────────────────────────────────────────────
 
 create or replace function update_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql as $func$
 begin
   new.updated_at = now();
   return new;
 end;
-$$;
+$func$;
 
 create trigger set_updated_at_collections
   before update on collections

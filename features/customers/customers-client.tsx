@@ -8,8 +8,10 @@ import { PageHeader } from "@/components/shared/page-header"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SearchInput } from "@/components/shared/search-input"
+import { StatusFilter } from "@/components/shared/status-filter"
 import { CustomerSheet } from "@/features/customers/customer-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { useCanEdit } from "@/components/shared/user-context"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -30,15 +32,19 @@ interface CustomersClientProps {
 
 export function CustomersClient({ customers }: CustomersClientProps) {
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("active")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Customer | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<Customer | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const canEdit = useCanEdit()
 
-  const filtered = customers.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = customers.filter((c) => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase())
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   function handleArchiveToggle(customer: Customer) {
     startTransition(async () => {
@@ -96,6 +102,7 @@ export function CustomersClient({ customers }: CustomersClientProps) {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
+        if (!canEdit) return null
         const c = row.original
         return (
           <div onClick={(e) => e.stopPropagation()}>
@@ -131,13 +138,24 @@ export function CustomersClient({ customers }: CustomersClientProps) {
   return (
     <>
       <PageHeader title="Customers" description="Manage customer profiles, contacts, and addresses.">
-        <Button size="sm" onClick={() => { setEditTarget(null); setSheetOpen(true) }}>
-          <Plus className="mr-1.5 h-4 w-4" /> New Customer
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => { setEditTarget(null); setSheetOpen(true) }}>
+            <Plus className="mr-1.5 h-4 w-4" /> New Customer
+          </Button>
+        )}
       </PageHeader>
 
       <div className="px-6 py-4 flex items-center gap-3 border-b border-border">
         <SearchInput value={search} onChange={setSearch} placeholder="Search customers..." className="w-64" />
+        <StatusFilter
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { label: "Active", value: "active" },
+            { label: "Archived", value: "archived" },
+            { label: "All", value: "all" },
+          ]}
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -145,7 +163,7 @@ export function CustomersClient({ customers }: CustomersClientProps) {
           icon={Users}
           title="No customers yet"
           description="Add your first customer to start mapping products."
-          action={{ label: "New Customer", onClick: () => { setEditTarget(null); setSheetOpen(true) } }}
+          action={canEdit ? { label: "New Customer", onClick: () => { setEditTarget(null); setSheetOpen(true) } } : undefined}
         />
       ) : (
         <DataTable

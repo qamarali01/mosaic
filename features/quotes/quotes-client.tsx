@@ -8,7 +8,9 @@ import { PageHeader } from "@/components/shared/page-header"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SearchInput } from "@/components/shared/search-input"
+import { StatusFilter } from "@/components/shared/status-filter"
 import { Button } from "@/components/ui/button"
+import { useCanEdit } from "@/components/shared/user-context"
 import { ColumnDef } from "@tanstack/react-table"
 import { FileText, Plus } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -19,12 +21,17 @@ interface QuotesClientProps {
 
 export function QuotesClient({ quotes }: QuotesClientProps) {
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
   const router = useRouter()
+  const canEdit = useCanEdit()
 
-  const filtered = quotes.filter((q) =>
-    q.quote_number.toLowerCase().includes(search.toLowerCase()) ||
-    q.customer.name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = quotes.filter((q) => {
+    const matchesSearch =
+      q.quote_number.toLowerCase().includes(search.toLowerCase()) ||
+      q.customer.name.toLowerCase().includes(search.toLowerCase())
+    const matchesStatus = statusFilter === "all" || q.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   const columns: ColumnDef<QuoteWithRelations>[] = [
     {
@@ -72,13 +79,26 @@ export function QuotesClient({ quotes }: QuotesClientProps) {
   return (
     <>
       <PageHeader title="Quotes" description="Build and track customer quotations.">
-        <Button size="sm" onClick={() => router.push("/quotes/new")}>
-          <Plus className="mr-1.5 h-4 w-4" /> New Quote
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => router.push("/quotes/new")}>
+            <Plus className="mr-1.5 h-4 w-4" /> New Quote
+          </Button>
+        )}
       </PageHeader>
 
       <div className="px-6 py-4 flex items-center gap-3 border-b border-border">
         <SearchInput value={search} onChange={setSearch} placeholder="Search quotes or customers..." className="w-72" />
+        <StatusFilter
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { label: "All", value: "all" },
+            { label: "Draft", value: "draft" },
+            { label: "Sent", value: "sent" },
+            { label: "Accepted", value: "accepted" },
+            { label: "Rejected", value: "rejected" },
+          ]}
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -86,7 +106,7 @@ export function QuotesClient({ quotes }: QuotesClientProps) {
           icon={FileText}
           title="No quotes yet"
           description="Create your first quote to start the sales process."
-          action={{ label: "New Quote", onClick: () => router.push("/quotes/new") }}
+          action={canEdit ? { label: "New Quote", onClick: () => router.push("/quotes/new") } : undefined}
         />
       ) : (
         <DataTable

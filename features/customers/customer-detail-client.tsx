@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { StatusBadge } from "@/components/shared/status-badge"
+import { BackButton } from "@/components/shared/back-button"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { CustomerSheet } from "@/features/customers/customer-sheet"
 import {
@@ -144,6 +145,7 @@ export function CustomerDetailClient({ customer, mappings, products }: CustomerD
       {/* Header */}
       <div className="px-6 py-5 border-b border-border flex items-start justify-between gap-4">
         <div>
+          <BackButton href="/customers" label="Customers" />
           <div className="flex items-center gap-2 mb-0.5">
             <h1 className="text-lg font-semibold">{customer.name}</h1>
             <StatusBadge status={customer.status} />

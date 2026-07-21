@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { ColumnDef } from "@tanstack/react-table"
 import { ShoppingCart, Plus } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { useCanEdit } from "@/components/shared/user-context"
 
 interface OrdersClientProps {
   orders: OrderWithRelations[]
@@ -20,6 +21,7 @@ interface OrdersClientProps {
 export function OrdersClient({ orders }: OrdersClientProps) {
   const [search, setSearch] = useState("")
   const router = useRouter()
+  const canEdit = useCanEdit()
 
   const filtered = orders.filter((o) =>
     o.order_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -80,9 +82,11 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   return (
     <>
       <PageHeader title="Orders" description="Track customer orders from confirmation to delivery.">
-        <Button size="sm" onClick={() => router.push("/orders/new")}>
-          <Plus className="mr-1.5 h-4 w-4" /> New Order
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => router.push("/orders/new")}>
+            <Plus className="mr-1.5 h-4 w-4" /> New Order
+          </Button>
+        )}
       </PageHeader>
 
       <div className="px-6 py-4 flex items-center gap-3 border-b border-border">
@@ -94,7 +98,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           icon={ShoppingCart}
           title="No orders yet"
           description="Orders are created from accepted quotes or manually."
-          action={{ label: "New Order", onClick: () => router.push("/orders/new") }}
+          action={canEdit ? { label: "New Order", onClick: () => router.push("/orders/new") } : undefined}
         />
       ) : (
         <DataTable

@@ -15,6 +15,7 @@ import {
 } from "@/types"
 import { customerSchema, contactSchema, addressSchema } from "@/lib/validations/customers"
 import { mappingSchema } from "@/lib/validations/mappings"
+import { logAudit } from "@/lib/utils/audit"
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 
@@ -81,12 +82,14 @@ export async function createCustomer(formData: FormData): Promise<ActionResult<C
     .single()
 
   if (error) return { success: false, error: error.message }
+  await logAudit(supabase, { tableName: "customers", recordId: data.id, action: "create", newData: data, performedBy: user.id })
   revalidatePath("/customers")
   return { success: true, data }
 }
 
 export async function updateCustomer(id: string, formData: FormData): Promise<ActionResult<Customer>> {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
   const parsed = customerSchema.safeParse({
     name: formData.get("name"),
@@ -105,6 +108,7 @@ export async function updateCustomer(id: string, formData: FormData): Promise<Ac
     .single()
 
   if (error) return { success: false, error: error.message }
+  await logAudit(supabase, { tableName: "customers", recordId: id, action: "update", newData: data, performedBy: user?.id ?? null })
   revalidatePath("/customers")
   revalidatePath(`/customers/${id}`)
   return { success: true, data }
@@ -112,16 +116,20 @@ export async function updateCustomer(id: string, formData: FormData): Promise<Ac
 
 export async function archiveCustomer(id: string): Promise<ActionResult> {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   const { error } = await supabase.from("customers").update({ status: "archived" }).eq("id", id)
   if (error) return { success: false, error: error.message }
+  await logAudit(supabase, { tableName: "customers", recordId: id, action: "archive", performedBy: user?.id ?? null })
   revalidatePath("/customers")
   return { success: true, data: undefined }
 }
 
 export async function restoreCustomer(id: string): Promise<ActionResult> {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   const { error } = await supabase.from("customers").update({ status: "active" }).eq("id", id)
   if (error) return { success: false, error: error.message }
+  await logAudit(supabase, { tableName: "customers", recordId: id, action: "restore", performedBy: user?.id ?? null })
   revalidatePath("/customers")
   return { success: true, data: undefined }
 }

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Collection, ProductWithRelations } from "@/types"
+import { BackButton } from "@/components/shared/back-button"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { CollectionSheet } from "@/features/collections/collection-sheet"
@@ -47,6 +48,7 @@ export function CollectionDetailClient({ collection, products }: CollectionDetai
       {/* Header */}
       <div className="px-6 py-5 border-b border-border flex items-start justify-between gap-4">
         <div>
+          <BackButton href="/collections" label="Collections" />
           <div className="flex items-center gap-2 mb-0.5">
             <h1 className="text-lg font-semibold">{collection.name}</h1>
             <StatusBadge status={collection.status} />

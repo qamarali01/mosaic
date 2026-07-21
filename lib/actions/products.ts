@@ -6,12 +6,11 @@ import {
   ActionResult,
   Product,
   ProductWithRelations,
-  ProductImage,
-  ProductDocument,
   PaginatedResult,
   PaginationParams,
 } from "@/types"
 import { productSchema } from "@/lib/validations/products"
+import { logAudit } from "@/lib/utils/audit"
 
 export async function getProducts(
   params: PaginationParams = {}
@@ -111,6 +110,7 @@ export async function createProduct(
   }
 
   revalidatePath("/products")
+  await logAudit(supabase, { tableName: "products", recordId: product.id, action: "create", newData: product, performedBy: user.id })
   return { success: true, data: product }
 }
 
@@ -176,29 +176,26 @@ export async function updateProduct(
 
   revalidatePath("/products")
   revalidatePath(`/products/${id}`)
+  await logAudit(supabase, { tableName: "products", recordId: id, action: "update", newData: product, performedBy: user.id })
   return { success: true, data: product }
 }
 
 export async function archiveProduct(id: string): Promise<ActionResult> {
   const supabase = await createClient()
-  const { error } = await supabase
-    .from("products")
-    .update({ status: "archived" })
-    .eq("id", id)
-
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from("products").update({ status: "archived" }).eq("id", id)
   if (error) return { success: false, error: error.message }
+  await logAudit(supabase, { tableName: "products", recordId: id, action: "archive", performedBy: user?.id ?? null })
   revalidatePath("/products")
   return { success: true, data: undefined }
 }
 
 export async function restoreProduct(id: string): Promise<ActionResult> {
   const supabase = await createClient()
-  const { error } = await supabase
-    .from("products")
-    .update({ status: "active" })
-    .eq("id", id)
-
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from("products").update({ status: "active" }).eq("id", id)
   if (error) return { success: false, error: error.message }
+  await logAudit(supabase, { tableName: "products", recordId: id, action: "restore", performedBy: user?.id ?? null })
   revalidatePath("/products")
   return { success: true, data: undefined }
 }

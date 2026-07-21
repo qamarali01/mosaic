@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation"
 import {
   ProductWithRelations,
   CustomerProductMappingWithRelations,
+  AuditLog,
 } from "@/types"
+import { BackButton } from "@/components/shared/back-button"
+import { AuditLogPanel } from "@/components/shared/audit-log-panel"
 
 type CollectionOption = { id: string; name: string }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -23,9 +26,10 @@ interface ProductDetailClientProps {
   product: ProductWithRelations
   mappings: CustomerProductMappingWithRelations[]
   collections: CollectionOption[]
+  auditLogs: AuditLog[]
 }
 
-export function ProductDetailClient({ product, mappings, collections }: ProductDetailClientProps) {
+export function ProductDetailClient({ product, mappings, collections, auditLogs }: ProductDetailClientProps) {
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -57,6 +61,7 @@ export function ProductDetailClient({ product, mappings, collections }: ProductD
       {/* Header */}
       <div className="px-6 py-5 border-b border-border flex items-start justify-between gap-4">
         <div>
+          <BackButton href="/products" label="Products" />
           <div className="flex items-center gap-2 mb-0.5">
             <h1 className="text-lg font-semibold">{product.name}</h1>
             <StatusBadge status={product.status} />
@@ -159,7 +164,7 @@ export function ProductDetailClient({ product, mappings, collections }: ProductD
           </div>
         </div>
 
-        {/* Customer mappings tab */}
+        {/* Customer mappings */}
         <div className="mt-10">
           <h2 className="text-sm font-medium mb-4">Customer Mappings ({mappings.length})</h2>
 
@@ -190,6 +195,12 @@ export function ProductDetailClient({ product, mappings, collections }: ProductD
               ))}
             </div>
           )}
+        </div>
+
+        {/* History */}
+        <div className="mt-10">
+          <h2 className="text-sm font-medium mb-4">History</h2>
+          <AuditLogPanel logs={auditLogs} />
         </div>
       </div>
 

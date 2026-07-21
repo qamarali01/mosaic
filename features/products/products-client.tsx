@@ -10,8 +10,10 @@ import { PageHeader } from "@/components/shared/page-header"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SearchInput } from "@/components/shared/search-input"
+import { StatusFilter } from "@/components/shared/status-filter"
 import { ProductSheet } from "@/features/products/product-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { useCanEdit } from "@/components/shared/user-context"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -41,16 +43,22 @@ interface ProductsClientProps {
 
 export function ProductsClient({ products, collections }: ProductsClientProps) {
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("active")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ProductWithRelations | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<ProductWithRelations | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const canEdit = useCanEdit()
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.internal_sku.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = products.filter((p) => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.internal_sku.toLowerCase().includes(search.toLowerCase())
+    const matchesStatus =
+      statusFilter === "all" || p.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   function handleEdit(product: ProductWithRelations) {
     setEditTarget(product)
@@ -128,6 +136,7 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
+        if (!canEdit) return null
         const p = row.original
         return (
           <div onClick={(e) => e.stopPropagation()}>
@@ -166,12 +175,14 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
         title="Products"
         description="Your complete product master — one product, one record."
       >
-        <Button
-          size="sm"
-          onClick={() => { setEditTarget(null); setSheetOpen(true) }}
-        >
-          <Plus className="mr-1.5 h-4 w-4" /> New Product
-        </Button>
+        {canEdit && (
+          <Button
+            size="sm"
+            onClick={() => { setEditTarget(null); setSheetOpen(true) }}
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> New Product
+          </Button>
+        )}
       </PageHeader>
 
       <div className="px-6 py-4 flex items-center gap-3 border-b border-border">
@@ -180,6 +191,15 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
           onChange={setSearch}
           placeholder="Search by name or SKU..."
           className="w-72"
+        />
+        <StatusFilter
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { label: "Active", value: "active" },
+            { label: "Archived", value: "archived" },
+            { label: "All", value: "all" },
+          ]}
         />
       </div>
 
@@ -193,7 +213,7 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
               : "Add your first product to get started."
           }
           action={
-            !search
+            !search && canEdit
               ? { label: "New Product", onClick: () => { setEditTarget(null); setSheetOpen(true) } }
               : undefined
           }

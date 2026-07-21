@@ -11,6 +11,7 @@ import {
   PaginationParams,
 } from "@/types"
 import { generateQuoteNumber } from "@/lib/utils"
+import { logAudit } from "@/lib/utils/audit"
 
 export async function getQuotes(
   params: PaginationParams & { status?: QuoteStatus | "all" } = {}
@@ -95,6 +96,7 @@ export async function createQuote(payload: {
   }
 
   revalidatePath("/quotes")
+  await logAudit(supabase, { tableName: "quotes", recordId: quote.id, action: "create", newData: quote, performedBy: user.id })
   return { success: true, data: quote }
 }
 
@@ -111,6 +113,8 @@ export async function updateQuoteStatus(
     .single()
 
   if (error) return { success: false, error: error.message }
+  const { data: { user } } = await supabase.auth.getUser()
+  await logAudit(supabase, { tableName: "quotes", recordId: id, action: "update", newData: { status }, performedBy: user?.id ?? null })
   revalidatePath("/quotes")
   revalidatePath(`/quotes/${id}`)
   return { success: true, data }

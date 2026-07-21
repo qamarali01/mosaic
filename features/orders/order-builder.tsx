@@ -2,18 +2,22 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { OrderWithRelations, OrderStatus } from "@/types"
+import { OrderWithRelations, OrderStatus, CustomerProductMappingWithRelations } from "@/types"
 
 type CustomerOption = { id: string; name: string; currency: string }
-import { PageHeader } from "@/components/shared/page-header"
-import { StatusBadge } from "@/components/shared/status-badge"
-import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Separator } from "@/components/ui/separator"
+import { StatusBadge } from "@/components/shared/status-badge"
+import { PageHeader } from "@/components/shared/page-header"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { createOrder, updateOrderStatus } from "@/lib/actions/orders"
 import { getMappingsByCustomer } from "@/lib/actions/customers"
 import { toast } from "sonner"
@@ -35,10 +39,6 @@ interface OrderBuilderProps {
   customers: CustomerOption[]
   order?: OrderWithRelations | null
 }
-
-const ORDER_STATUSES: OrderStatus[] = [
-  "pending", "confirmed", "in_production", "shipped", "delivered", "cancelled"
-]
 
 const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   pending: ["confirmed", "cancelled"],
@@ -67,18 +67,47 @@ export function OrderBuilder({ customers, order }: OrderBuilderProps) {
       currency: i.currency,
     })) ?? []
   )
+
+  // Checklist state
+  const [availableMappings, setAvailableMappings] = useState<CustomerProductMappingWithRelations[]>([])
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [showChecklist, setShowChecklist] = useState(false)
   const [loadingMappings, setLoadingMappings] = useState(false)
+
+  // Add-product popover
+  const [addPopoverOpen, setAddPopoverOpen] = useState(false)
+
   const [isPending, startTransition] = useTransition()
   const [statusAction, setStatusAction] = useState<OrderStatus | null>(null)
 
   async function handleCustomerChange(id: string) {
     setCustomerId(id)
     setItems([])
+    setCheckedIds(new Set())
+    setShowChecklist(false)
     if (!id) return
     setLoadingMappings(true)
     const mappings = await getMappingsByCustomer(id)
     setLoadingMappings(false)
-    setItems(mappings.map((m) => ({
+    setAvailableMappings(mappings)
+    if (mappings.length > 0) setShowChecklist(true)
+  }
+
+  function toggleCheck(id: string) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll(checked: boolean) {
+    setCheckedIds(checked ? new Set(availableMappings.map((m) => m.id)) : new Set())
+  }
+
+  function confirmChecklist() {
+    const selected = availableMappings.filter((m) => checkedIds.has(m.id))
+    setItems(selected.map((m) => ({
       product_id: m.product_id,
       product_name: m.product.name,
       product_sku: m.product.internal_sku,
@@ -88,6 +117,21 @@ export function OrderBuilder({ customers, order }: OrderBuilderProps) {
       unit_price: m.price,
       currency: m.currency,
     })))
+    setShowChecklist(false)
+  }
+
+  function addMappedProduct(mapping: CustomerProductMappingWithRelations) {
+    setItems((prev) => [...prev, {
+      product_id: mapping.product_id,
+      product_name: mapping.product.name,
+      product_sku: mapping.product.internal_sku,
+      customer_sku: mapping.customer_sku,
+      customer_description: mapping.customer_description ?? "",
+      quantity: 1,
+      unit_price: mapping.price,
+      currency: mapping.currency,
+    }])
+    setAddPopoverOpen(false)
   }
 
   function updateItem(index: number, field: keyof OrderItem, value: string | number) {
@@ -100,12 +144,13 @@ export function OrderBuilder({ customers, order }: OrderBuilderProps) {
 
   const total = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const currency = items[0]?.currency ?? "USD"
+  const addedProductIds = new Set(items.map((i) => i.product_id))
+  const addableProducts = availableMappings.filter((m) => !addedProductIds.has(m.product_id))
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!customerId) { toast.error("Select a customer"); return }
     if (items.length === 0) { toast.error("Add at least one item"); return }
-
     const fd = new FormData(e.currentTarget)
     startTransition(async () => {
       const result = await createOrder({
@@ -121,7 +166,6 @@ export function OrderBuilder({ customers, order }: OrderBuilderProps) {
           sort_order: i,
         })),
       })
-
       if (result.success) {
         toast.success("Order created")
         router.push(`/orders/${result.data.id}`)
@@ -152,6 +196,7 @@ export function OrderBuilder({ customers, order }: OrderBuilderProps) {
       <PageHeader
         title={isEditing ? order.order_number : "New Order"}
         description={isEditing ? order.customer.name : "Create a customer order."}
+        back={{ href: "/orders", label: "Orders" }}
       >
         <div className="flex items-center gap-2">
           {isEditing && <StatusBadge status={order.status} />}
@@ -195,103 +240,133 @@ export function OrderBuilder({ customers, order }: OrderBuilderProps) {
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                name="notes"
-                defaultValue={order?.notes ?? ""}
-                rows={1}
-                className="resize-none"
-                disabled={readOnly}
-              />
+              <Textarea id="notes" name="notes" defaultValue={order?.notes ?? ""} rows={1} className="resize-none" disabled={readOnly} />
             </div>
           </div>
 
           <Separator />
 
-          {/* Line items */}
-          <div>
-            <h2 className="text-sm font-medium mb-3">Line Items</h2>
-
-            {items.length === 0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
-                {customerId ? "No products mapped for this customer." : "Select a customer to load products."}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="hidden sm:grid grid-cols-11 gap-2 px-3 pb-1">
-                  <span className="col-span-4 text-xs text-muted-foreground">Product</span>
-                  <span className="col-span-2 text-xs text-muted-foreground">Customer SKU</span>
-                  <span className="col-span-2 text-xs text-muted-foreground">Unit Price</span>
-                  <span className="col-span-1 text-xs text-muted-foreground">Qty</span>
-                  <span className="col-span-2 text-xs text-muted-foreground">Total</span>
+          {/* Product checklist */}
+          {showChecklist && (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-muted/50 border-b border-border">
+                <div>
+                  <p className="text-sm font-medium">Select products to include</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{checkedIds.size} of {availableMappings.length} selected</p>
                 </div>
-                {items.map((item, i) => (
-                  <div key={i} className="grid sm:grid-cols-11 gap-2 p-3 rounded-lg border border-border items-center">
-                    <div className="sm:col-span-4 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.product_name}</p>
-                      <p className="text-xs font-mono text-muted-foreground">{item.product_sku}</p>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" size="sm" className="text-xs h-7"
+                    onClick={() => toggleAll(checkedIds.size < availableMappings.length)}>
+                    {checkedIds.size === availableMappings.length ? "Deselect all" : "Select all"}
+                  </Button>
+                  <Button type="button" size="sm" className="h-7 text-xs" onClick={confirmChecklist} disabled={checkedIds.size === 0}>
+                    Add {checkedIds.size > 0 ? `${checkedIds.size} ` : ""}to Order
+                  </Button>
+                </div>
+              </div>
+              <div className="divide-y divide-border/50 max-h-64 overflow-y-auto">
+                {availableMappings.map((m) => (
+                  <label key={m.id} className="flex items-center gap-3 px-4 py-3 hover:bg-accent/30 cursor-pointer">
+                    <Checkbox checked={checkedIds.has(m.id)} onCheckedChange={() => toggleCheck(m.id)} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{m.product.name}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{m.customer_sku}</p>
                     </div>
-                    <div className="sm:col-span-2">
-                      <Input
-                        value={item.customer_sku}
-                        onChange={(e) => updateItem(i, "customer_sku", e.target.value)}
-                        className="h-8 text-xs font-mono"
-                        disabled={readOnly}
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.unit_price}
-                        onChange={(e) => updateItem(i, "unit_price", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs"
-                        disabled={readOnly}
-                      />
-                    </div>
-                    <div className="sm:col-span-1">
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(i, "quantity", parseInt(e.target.value) || 1)}
-                        className="h-8 text-xs"
-                        disabled={readOnly}
-                      />
-                    </div>
-                    <div className="sm:col-span-2 flex items-center justify-between">
-                      <span className="text-sm font-medium">
-                        {formatCurrency(item.unit_price * item.quantity, item.currency)}
-                      </span>
-                      {!readOnly && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeItem(i)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                    <span className="text-sm text-muted-foreground shrink-0">{formatCurrency(m.price, m.currency)}</span>
+                  </label>
                 ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {items.length > 0 && (
-              <div className="flex justify-end mt-4 pt-4 border-t border-border">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground mb-0.5">Total</p>
-                  <p className="text-xl font-semibold">{formatCurrency(total, currency)}</p>
-                </div>
+          {/* Line items */}
+          {!showChecklist && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-medium">Line Items</h2>
+                {!readOnly && customerId && addableProducts.length > 0 && (
+                  <Popover open={addPopoverOpen} onOpenChange={setAddPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1">
+                        <Plus className="h-3.5 w-3.5" /> Add product
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Search products..." className="h-8" />
+                        <CommandList>
+                          <CommandEmpty>No products found.</CommandEmpty>
+                          <CommandGroup>
+                            {addableProducts.map((m) => (
+                              <CommandItem key={m.id} onSelect={() => addMappedProduct(m)} className="gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm truncate">{m.product.name}</p>
+                                  <p className="text-xs font-mono text-muted-foreground">{m.customer_sku}</p>
+                                </div>
+                                <span className="text-xs text-muted-foreground shrink-0">{formatCurrency(m.price, m.currency)}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
               </div>
-            )}
-          </div>
 
-          {!isEditing && (
+              {items.length === 0 ? (
+                <div className="py-10 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
+                  {customerId ? "No items added. Use \"Add product\" above." : "Select a customer first."}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="hidden sm:grid grid-cols-11 gap-2 px-3 pb-1">
+                    <span className="col-span-4 text-xs text-muted-foreground">Product</span>
+                    <span className="col-span-2 text-xs text-muted-foreground">Customer SKU</span>
+                    <span className="col-span-2 text-xs text-muted-foreground">Unit Price</span>
+                    <span className="col-span-1 text-xs text-muted-foreground">Qty</span>
+                    <span className="col-span-2 text-xs text-muted-foreground">Total</span>
+                  </div>
+                  {items.map((item, i) => (
+                    <div key={i} className="grid sm:grid-cols-11 gap-2 p-3 rounded-lg border border-border items-center">
+                      <div className="sm:col-span-4 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.product_name}</p>
+                        <p className="text-xs font-mono text-muted-foreground">{item.product_sku}</p>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Input value={item.customer_sku} onChange={(e) => updateItem(i, "customer_sku", e.target.value)} className="h-8 text-xs font-mono" disabled={readOnly} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Input type="number" step="0.01" min="0" value={item.unit_price} onChange={(e) => updateItem(i, "unit_price", parseFloat(e.target.value) || 0)} className="h-8 text-xs" disabled={readOnly} />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <Input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(i, "quantity", parseInt(e.target.value) || 1)} className="h-8 text-xs" disabled={readOnly} />
+                      </div>
+                      <div className="sm:col-span-2 flex items-center justify-between">
+                        <span className="text-sm font-medium">{formatCurrency(item.unit_price * item.quantity, item.currency)}</span>
+                        {!readOnly && (
+                          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeItem(i)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {items.length > 0 && (
+                <div className="flex justify-end mt-4 pt-4 border-t border-border">
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground mb-0.5">Total</p>
+                    <p className="text-xl font-semibold">{formatCurrency(total, currency)}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isEditing && !showChecklist && (
             <div className="flex gap-3">
               <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
               <Button type="submit" disabled={isPending}>

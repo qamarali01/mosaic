@@ -12,6 +12,7 @@ import {
   PaginationParams,
 } from "@/types"
 import { generateOrderNumber } from "@/lib/utils"
+import { logAudit } from "@/lib/utils/audit"
 
 export async function getOrders(
   params: PaginationParams & { status?: OrderStatus | "all" } = {}
@@ -100,6 +101,7 @@ export async function createOrder(payload: {
   }
 
   revalidatePath("/orders")
+  await logAudit(supabase, { tableName: "orders", recordId: order.id, action: "create", newData: order, performedBy: user.id })
   return { success: true, data: order }
 }
 
@@ -116,6 +118,8 @@ export async function updateOrderStatus(
     .single()
 
   if (error) return { success: false, error: error.message }
+  const { data: { user } } = await supabase.auth.getUser()
+  await logAudit(supabase, { tableName: "orders", recordId: id, action: "update", newData: { status }, performedBy: user?.id ?? null })
   revalidatePath("/orders")
   revalidatePath(`/orders/${id}`)
   return { success: true, data }

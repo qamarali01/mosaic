@@ -16,23 +16,27 @@ import {
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { UserRole } from "@/types"
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/products", label: "Products", icon: Package },
-  { href: "/collections", label: "Collections", icon: Layers },
-  { href: "/customers", label: "Customers", icon: Users },
-  { href: "/quotes", label: "Quotes", icon: FileText },
-  { href: "/orders", label: "Orders", icon: ShoppingCart },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "sales", "viewer"] },
+  { href: "/products", label: "Products", icon: Package, roles: ["admin", "sales", "viewer"] },
+  { href: "/collections", label: "Collections", icon: Layers, roles: ["admin", "sales", "viewer"] },
+  { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "sales", "viewer"] },
+  { href: "/quotes", label: "Quotes", icon: FileText, roles: ["admin", "sales", "viewer"] },
+  { href: "/orders", label: "Orders", icon: ShoppingCart, roles: ["admin", "sales", "viewer"] },
+  { href: "/settings/users", label: "Settings", icon: Settings, roles: ["admin"] },
 ]
 
 interface SidebarProps {
   collapsed: boolean
   onToggle: () => void
+  role: UserRole
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, role }: SidebarProps) {
   const pathname = usePathname()
+  const visibleItems = navItems.filter((item) => item.roles.includes(role))
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -55,7 +59,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/")
             const item = (
               <Link

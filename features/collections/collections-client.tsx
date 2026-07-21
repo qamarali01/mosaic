@@ -8,8 +8,10 @@ import { PageHeader } from "@/components/shared/page-header"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SearchInput } from "@/components/shared/search-input"
+import { StatusFilter } from "@/components/shared/status-filter"
 import { CollectionSheet } from "@/features/collections/collection-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { useCanEdit } from "@/components/shared/user-context"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -31,15 +33,19 @@ interface CollectionsClientProps {
 
 export function CollectionsClient({ collections }: CollectionsClientProps) {
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("active")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Collection | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<Collection | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const canEdit = useCanEdit()
 
-  const filtered = collections.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = collections.filter((c) => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase())
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   function handleEdit(collection: Collection) {
     setEditTarget(collection)
@@ -112,6 +118,7 @@ export function CollectionsClient({ collections }: CollectionsClientProps) {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
+        if (!canEdit) return null
         const c = row.original
         return (
           <div onClick={(e) => e.stopPropagation()}>
@@ -150,12 +157,14 @@ export function CollectionsClient({ collections }: CollectionsClientProps) {
         title="Collections"
         description="Group products into collections for easy browsing."
       >
-        <Button
-          size="sm"
-          onClick={() => { setEditTarget(null); setSheetOpen(true) }}
-        >
-          <Plus className="mr-1.5 h-4 w-4" /> New Collection
-        </Button>
+        {canEdit && (
+          <Button
+            size="sm"
+            onClick={() => { setEditTarget(null); setSheetOpen(true) }}
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> New Collection
+          </Button>
+        )}
       </PageHeader>
 
       <div className="px-6 py-4 flex items-center gap-3 border-b border-border">
@@ -165,6 +174,15 @@ export function CollectionsClient({ collections }: CollectionsClientProps) {
           placeholder="Search collections..."
           className="w-64"
         />
+        <StatusFilter
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { label: "Active", value: "active" },
+            { label: "Archived", value: "archived" },
+            { label: "All", value: "all" },
+          ]}
+        />
       </div>
 
       {filtered.length === 0 ? (
@@ -172,7 +190,7 @@ export function CollectionsClient({ collections }: CollectionsClientProps) {
           icon={Layers}
           title="No collections yet"
           description="Create a collection to group your products."
-          action={{ label: "New Collection", onClick: () => { setEditTarget(null); setSheetOpen(true) } }}
+          action={canEdit ? { label: "New Collection", onClick: () => { setEditTarget(null); setSheetOpen(true) } } : undefined}
         />
       ) : (
         <DataTable
