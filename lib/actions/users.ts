@@ -11,19 +11,12 @@ export interface UserWithEmail extends UserProfile {
 export async function getUsers(): Promise<UserWithEmail[]> {
   const supabase = await createClient()
 
-  // Verify caller is admin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
+  const callerRole = (user.app_metadata?.role as UserRole) ?? "viewer"
+  if (callerRole !== "admin") return []
 
-  if (profile?.role !== "admin") return []
-
-  // Fetch profiles
   const { data: profiles } = await supabase
     .from("user_profiles")
     .select("*")
@@ -31,7 +24,6 @@ export async function getUsers(): Promise<UserWithEmail[]> {
 
   if (!profiles?.length) return []
 
-  // Fetch auth users for emails using service role
   const adminClient = await createAdminClient()
   const { data: authUsers } = await adminClient.auth.admin.listUsers()
 
@@ -54,14 +46,8 @@ export async function updateUserRole(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Not authenticated" }
 
-  // Verify caller is admin
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "admin") return { success: false, error: "Insufficient permissions" }
+  const callerRole = (user.app_metadata?.role as UserRole) ?? "viewer"
+  if (callerRole !== "admin") return { success: false, error: "Insufficient permissions" }
 
   const { error } = await supabase
     .from("user_profiles")
@@ -69,6 +55,9 @@ export async function updateUserRole(
     .eq("id", userId)
 
   if (error) return { success: false, error: error.message }
+
+  const adminClient = await createAdminClient()
+  await adminClient.auth.admin.signOut(userId, "global")
 
   revalidatePath("/settings/users")
   return { success: true, data: undefined }
