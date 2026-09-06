@@ -21,7 +21,7 @@ export async function getProducts(
   let query = supabase
     .from("products")
     .select(
-      `*, collection:collections(id, name), images:product_images(id, url, storage_path, sort_order), documents:product_documents(id, name, url, storage_path, file_size, mime_type)`,
+      `*, collection:collections(id, name), images:product_images(url, storage_path, sort_order)`,
       { count: "exact" }
     )
 
@@ -196,6 +196,49 @@ export async function restoreProduct(id: string): Promise<ActionResult> {
   const { error } = await supabase.from("products").update({ status: "active" }).eq("id", id)
   if (error) return { success: false, error: error.message }
   await logAudit(supabase, { tableName: "products", recordId: id, action: "restore", performedBy: user?.id ?? null })
+  revalidatePath("/products")
+  return { success: true, data: undefined }
+}
+
+export async function getActiveProducts(): Promise<Pick<Product, "id" | "internal_sku" | "name">[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("products")
+    .select("id, internal_sku, name")
+    .eq("status", "active")
+    .order("name")
+  return data ?? []
+}
+
+export async function deleteProduct(id: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Not authenticated" }
+
+  // Check for references in quote_items, order_items, customer_product_mappings
+  const [quoteItems, orderItems, mappings] = await Promise.all([
+    supabase.from("quote_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+    supabase.from("order_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+    supabase.from("customer_product_mappings").select("id", { count: "exact", head: true }).eq("product_id", id),
+  ])
+
+  const refCount = (quoteItems.count ?? 0) + (orderItems.count ?? 0) + (mappings.count ?? 0)
+
+  if (refCount > 0) {
+    const parts = []
+    if ((quoteItems.count ?? 0) > 0) parts.push(`${quoteItems.count} quote${quoteItems.count === 1 ? "" : "s"}`)
+    if ((orderItems.count ?? 0) > 0) parts.push(`${orderItems.count} order${orderItems.count === 1 ? "" : "s"}`)
+    if ((mappings.count ?? 0) > 0) parts.push(`${mappings.count} customer mapping${mappings.count === 1 ? "" : "s"}`)
+    return {
+      success: false,
+      error: `Cannot delete — this product is referenced by ${parts.join(", ")}. Archive it instead.`,
+    }
+  }
+
+  const { error } = await supabase.from("products").delete().eq("id", id)
+  if (error) return { success: false, error: error.message }
+
+  await logAudit(supabase, { tableName: "products", recordId: id, action: "archive", performedBy: user.id })
   revalidatePath("/products")
   return { success: true, data: undefined }
 }

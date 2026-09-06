@@ -2,7 +2,6 @@
 
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
-import { useCallback } from "react"
 import { cn } from "@/lib/utils"
 
 interface SearchInputProps {
@@ -15,12 +14,12 @@ interface SearchInputProps {
 export function SearchInput({ value, onChange, placeholder = "Search...", className }: SearchInputProps) {
   return (
     <div className={cn("relative", className)}>
-      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="pl-8 h-8 text-sm bg-transparent border-border/70 focus-visible:border-border"
+        className="pl-9 h-9 text-sm bg-background rounded-full border-border/60 focus-visible:border-primary/50 focus-visible:ring-primary/20"
       />
     </div>
   )

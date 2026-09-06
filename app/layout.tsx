@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Geist, Geist_Mono, Playfair_Display } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
+import { ThemeProvider } from "next-themes"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -13,9 +14,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 })
 
+const playfair = Playfair_Display({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+})
+
 export const metadata: Metadata = {
-  title: "PIM — Product Information Management",
-  description: "Centralized product and catalog management system",
+  title: "Mosaic",
+  description: "Crafted product management",
 }
 
 export default function RootLayout({
@@ -26,11 +33,19 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
+      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full`}
+      suppressHydrationWarning
     >
       <body className="h-full antialiased">
-        {children}
-        <Toaster position="bottom-right" richColors />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster position="bottom-right" richColors />
+        </ThemeProvider>
       </body>
     </html>
   )

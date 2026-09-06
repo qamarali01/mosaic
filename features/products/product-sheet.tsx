@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { ProductWithRelations } from "@/types"
 
 type CollectionOption = { id: string; name: string }
@@ -60,22 +60,29 @@ export function ProductSheet({
   collections,
   onSuccess,
 }: ProductSheetProps) {
-  const [images, setImages] = useState<ImageEntry[]>(product?.images ?? [])
-  const [documents, setDocuments] = useState<DocEntry[]>(product?.documents ?? [])
-  const [collectionId, setCollectionId] = useState<string>(product?.collection_id ?? "none")
+  const [images, setImages] = useState<ImageEntry[]>([])
+  const [documents, setDocuments] = useState<DocEntry[]>([])
+  const [collectionId, setCollectionId] = useState<string>("none")
   const [isPending, startTransition] = useTransition()
   const isEditing = !!product
 
+  // Sync state whenever the sheet opens or the target product changes
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (open) {
+        setImages(product?.images ?? [])
+        setDocuments(product?.documents ?? [])
+        setCollectionId(product?.collection_id ?? "none")
+      } else {
+        setImages([])
+        setDocuments([])
+        setCollectionId("none")
+      }
+    }, 0)
+    return () => clearTimeout(t)
+  }, [open, product])
+
   const handleOpenChange = (open: boolean) => {
-    if (open && product) {
-      setImages(product.images ?? [])
-      setDocuments(product.documents ?? [])
-      setCollectionId(product.collection_id ?? "none")
-    } else if (!open) {
-      setImages([])
-      setDocuments([])
-      setCollectionId("none")
-    }
     onOpenChange(open)
   }
 

@@ -12,17 +12,24 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Paintbrush,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { UserRole } from "@/types"
+import { MosaicLogo, MosaicWordmark } from "@/components/shared/mosaic-logo"
+
+// Multi-colour "Mosaic" wordmark — each letter gets its own mosaic tile colour
+function MosaicWordmarkWrapper() {
+  return <MosaicWordmark height={22} />
+}
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "sales", "viewer"] },
   { href: "/products", label: "Products", icon: Package, roles: ["admin", "sales", "viewer"] },
   { href: "/collections", label: "Collections", icon: Layers, roles: ["admin", "sales", "viewer"] },
   { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "sales", "viewer"] },
+  { href: "/artisans", label: "Artisans", icon: Paintbrush, roles: ["admin", "sales", "viewer"] },
   { href: "/quotes", label: "Quotes", icon: FileText, roles: ["admin", "sales", "viewer"] },
   { href: "/orders", label: "Orders", icon: ShoppingCart, roles: ["admin", "sales", "viewer"] },
   { href: "/settings/users", label: "Settings", icon: Settings, roles: ["admin"] },
@@ -42,23 +49,23 @@ export function Sidebar({ collapsed, onToggle, role }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-full border-r border-border bg-background transition-all duration-200 ease-in-out",
-          collapsed ? "w-14" : "w-52"
+          "flex flex-col h-full border-r border-border/50 bg-background/80 backdrop-blur-xl transition-all duration-300 ease-in-out",
+          collapsed ? "w-16" : "w-56"
         )}
       >
         {/* Logo */}
-        <div className={cn(
-          "flex items-center h-14 border-b border-border shrink-0",
-          collapsed ? "px-3 justify-center" : "px-4 gap-2.5"
-        )}>
-          <div className="w-6 h-6 bg-foreground rounded-md shrink-0" />
-          {!collapsed && (
-            <span className="font-semibold text-sm tracking-tight truncate">PIM</span>
+        <div
+          className={cn(
+            "flex items-center h-16 border-b border-border/50 shrink-0",
+            collapsed ? "px-[10px] justify-center" : "px-4 gap-2.5"
           )}
+        >
+          <MosaicLogo size={36} className="shrink-0" />
+          {!collapsed && <MosaicWordmarkWrapper />}
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
           {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/")
             const item = (
@@ -66,14 +73,14 @@ export function Sidebar({ collapsed, onToggle, role }: SidebarProps) {
                 key={href}
                 href={href}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2 py-2 text-sm transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                   collapsed ? "justify-center w-full" : "",
                   active
-                    ? "bg-accent text-accent-foreground font-medium"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" />
+                <Icon className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && <span>{label}</span>}
               </Link>
             )
@@ -82,7 +89,9 @@ export function Sidebar({ collapsed, onToggle, role }: SidebarProps) {
               return (
                 <Tooltip key={href}>
                   <TooltipTrigger asChild>{item}</TooltipTrigger>
-                  <TooltipContent side="right">{label}</TooltipContent>
+                  <TooltipContent side="right" className="font-medium">
+                    {label}
+                  </TooltipContent>
                 </Tooltip>
               )
             }
@@ -92,11 +101,11 @@ export function Sidebar({ collapsed, onToggle, role }: SidebarProps) {
         </nav>
 
         {/* Collapse toggle */}
-        <div className="p-2 border-t border-border">
+        <div className="p-3 border-t border-border/50">
           <button
             onClick={onToggle}
             className={cn(
-              "flex items-center gap-2 w-full rounded-md px-2 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors",
+              "flex items-center gap-2 w-full rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-200",
               collapsed ? "justify-center" : ""
             )}
           >

@@ -4,7 +4,7 @@ import { ProductsClient } from "@/features/products/products-client"
 
 export default async function ProductsPage() {
   const [{ data: products }, collections] = await Promise.all([
-    getProducts({ pageSize: 100, status: "all" }),
+    getProducts({ pageSize: 25, status: "all" }),
     getAllCollections(),
   ])
 

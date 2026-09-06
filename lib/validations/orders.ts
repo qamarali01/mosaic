@@ -1,7 +1,8 @@
 import { z } from "zod"
+import { uuidish } from "./uuid"
 
 export const orderItemSchema = z.object({
-  product_id: z.string().uuid("Product is required"),
+  product_id: uuidish("Product is required"),
   customer_sku: z.string().min(1),
   customer_description: z.string().nullable().optional(),
   quantity: z.coerce.number().int().min(1),
@@ -10,8 +11,8 @@ export const orderItemSchema = z.object({
 })
 
 export const orderSchema = z.object({
-  customer_id: z.string().uuid("Customer is required"),
-  quote_id: z.string().uuid().nullable().optional(),
+  customer_id: uuidish("Customer is required"),
+  quote_id: uuidish().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   items: z.array(orderItemSchema).min(1, "At least one item is required"),
 })

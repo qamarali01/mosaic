@@ -30,8 +30,9 @@ import {
   Pencil,
   Archive,
   RotateCcw,
+  Trash2,
 } from "lucide-react"
-import { archiveProduct, restoreProduct } from "@/lib/actions/products"
+import { archiveProduct, restoreProduct, deleteProduct } from "@/lib/actions/products"
 import { toast } from "sonner"
 import Image from "next/image"
 import { formatDate } from "@/lib/utils"
@@ -47,6 +48,7 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ProductWithRelations | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<ProductWithRelations | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProductWithRelations | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
   const canEdit = useCanEdit()
@@ -79,6 +81,20 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
         toast.error(result.error)
       }
       setArchiveTarget(null)
+    })
+  }
+
+  function handleDelete() {
+    if (!deleteTarget) return
+    startTransition(async () => {
+      const result = await deleteProduct(deleteTarget.id)
+      if (result.success) {
+        toast.success("Product deleted")
+        router.refresh()
+      } else {
+        toast.error(result.error)
+      }
+      setDeleteTarget(null)
     })
   }
 
@@ -160,6 +176,12 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
                   ) : (
                     <><Archive className="mr-2 h-3.5 w-3.5" /> Archive</>
                   )}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => setDeleteTarget(p)}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -246,6 +268,16 @@ export function ProductsClient({ products, collections }: ProductsClientProps) {
         confirmLabel={archiveTarget?.status === "archived" ? "Restore" : "Archive"}
         variant={archiveTarget?.status === "archived" ? "default" : "destructive"}
         onConfirm={() => archiveTarget && handleArchiveToggle(archiveTarget)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete product?"
+        description={`"${deleteTarget?.name}" will be permanently deleted. This cannot be undone. Products referenced by quotes, orders, or customer mappings cannot be deleted.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
       />
     </>
   )

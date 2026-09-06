@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-display: var(--font-display);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -27,54 +28,91 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/* ─── Light Mode: Warm, Notion-inspired ─────────────────────────────────────── */
+
 :root {
-  --radius: 0.5rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --radius: 0.75rem;
+
+  /* Old newspaper — warm aged paper */
+  --background: oklch(0.910 0.040 72);
+  --foreground: oklch(0.145 0.01 70);
+
+  /* Cards float above the page */
+  --card: oklch(0.925 0.032 72);
+  --card-foreground: oklch(0.145 0.01 70);
+
+  /* Popovers same as card */
+  --popover: oklch(0.925 0.032 72);
+  --popover-foreground: oklch(0.145 0.01 70);
+
+  /* Warm indigo primary - brand accent */
+  --primary: oklch(0.27 0.04 240);
+  --primary-foreground: oklch(0.97 0.005 72);
+
+  /* Softer secondary */
+  --secondary: oklch(0.955 0.022 36);
+  --secondary-foreground: oklch(0.145 0.01 70);
+
+  /* Muted with warm cream undertone */
+  --muted: oklch(0.945 0.024 36);
+  --muted-foreground: oklch(0.42 0.03 70);
+
+  /* Subtle accent tint — warm linen hover */
+  --accent: oklch(0.888 0.030 68);
+  --accent-foreground: oklch(0.20 0.02 70);
+
+  /* Destructive stays readable */
+  --destructive: oklch(0.45 0.16 25);
+  --destructive-foreground: oklch(0.97 0.005 72);
+
+  /* Warm peach-cream borders */
+  --border: oklch(0.852 0.050 68);
+  --input: oklch(0.852 0.050 68);
+  --ring: oklch(0.27 0.04 240);
 }
 
+/* ─── Dark Mode: Deep warm charcoal ─────────────────────────────────────────── */
+
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.141 0.005 285.823);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.141 0.005 285.823);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.274 0.006 286.033);
-  --input: oklch(0.274 0.006 286.033);
-  --ring: oklch(0.552 0.016 285.938);
+  /* Deep warm charcoal background */
+  --background: oklch(0.155 0.012 270);
+  --foreground: oklch(0.94 0.005 70);
+
+  /* Slightly elevated cards */
+  --card: oklch(0.195 0.012 270);
+  --card-foreground: oklch(0.94 0.005 70);
+
+  /* Popovers slightly brighter */
+  --popover: oklch(0.195 0.012 270);
+  --popover-foreground: oklch(0.94 0.005 70);
+
+  /* Brighter indigo for dark mode */
+  --primary: oklch(0.70 0.15 270);
+  --primary-foreground: oklch(0.14 0.01 270);
+
+  --secondary: oklch(0.26 0.01 270);
+  --secondary-foreground: oklch(0.94 0.005 70);
+
+  --muted: oklch(0.26 0.01 270);
+  --muted-foreground: oklch(0.65 0.01 270);
+
+  --accent: oklch(0.26 0.02 270);
+  --accent-foreground: oklch(0.94 0.005 70);
+
+  --destructive: oklch(0.40 0.14 25);
+  --destructive-foreground: oklch(0.94 0.005 70);
+
+  --border: oklch(0.28 0.01 270);
+  --input: oklch(0.28 0.01 270);
+  --ring: oklch(0.70 0.15 270);
 }
+
+/* ─── Base Styles ───────────────────────────────────────────────────────────── */
 
 * {
   border-color: var(--border);
@@ -85,20 +123,69 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Smooth transitions for theme changes */
+html {
+  color-scheme: light;
 }
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  background: oklch(0.80 0.005 80);
+  border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  background: oklch(0.65 0.01 70);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.35 0.01 270);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.50 0.01 270);
+}
+
+/* ─── Selection ─────────────────────────────────────────────────────────────── */
+
+::selection {
+  background: oklch(0.85 0.08 270);
+  color: oklch(0.145 0.01 70);
+}
+
+.dark ::selection {
+  background: oklch(0.35 0.12 270);
+  color: oklch(0.94 0.005 70);
+}
+
+/* ─── Focus States ─────────────────────────────────────────────────────────── */
+
+:focus-visible:not(.outline-none) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ─── Smooth Transitions ─────────────────────────────────────────────────────── */
+
+button, a, input, select, textarea, [role="button"], [role="tab"], label {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }

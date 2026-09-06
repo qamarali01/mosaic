@@ -42,7 +42,7 @@ export async function getOrder(id: string): Promise<OrderWithRelations | null> {
   const supabase = await createClient()
   const { data } = await supabase
     .from("orders")
-    .select(`*, customer:customers(id, name, currency, payment_terms), quote:quotes(id, quote_number), items:order_items(*, product:products(id, internal_sku, name))`)
+    .select(`*, customer:customers(id, name, currency, payment_terms), quote:quotes(id, quote_number), items:order_items(*, product:products(id, internal_sku, name)), assignments:artisan_assignments(*, artisan:artisans(id, name))`)
     .eq("id", id)
     .single()
   return data as OrderWithRelations | null
@@ -120,6 +120,58 @@ export async function updateOrderStatus(
   if (error) return { success: false, error: error.message }
   const { data: { user } } = await supabase.auth.getUser()
   await logAudit(supabase, { tableName: "orders", recordId: id, action: "update", newData: { status }, performedBy: user?.id ?? null })
+  revalidatePath("/orders")
+  revalidatePath(`/orders/${id}`)
+  return { success: true, data }
+}
+
+export async function updateOrder(
+  id: string,
+  payload: {
+    notes?: string | null
+    items: Array<{
+      product_id: string
+      customer_sku: string
+      customer_description?: string | null
+      quantity: number
+      unit_price: number
+      currency: string
+      sort_order: number
+    }>
+  }
+): Promise<ActionResult<Order>> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Not authenticated" }
+
+  const { data: old } = await supabase.from("orders").select("*").eq("id", id).single()
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ notes: payload.notes ?? null })
+    .eq("id", id)
+    .select()
+    .single()
+
+  if (error) return { success: false, error: error.message }
+
+  // Replace all line items (delete + re-insert)
+  await supabase.from("order_items").delete().eq("order_id", id)
+  if (payload.items.length > 0) {
+    const { error: itemsError } = await supabase
+      .from("order_items")
+      .insert(payload.items.map((item) => ({ ...item, order_id: id })))
+    if (itemsError) return { success: false, error: itemsError.message }
+  }
+
+  await logAudit(supabase, {
+    tableName: "orders",
+    recordId: id,
+    action: "update",
+    oldData: old,
+    newData: { ...data, notes: payload.notes },
+    performedBy: user.id,
+  })
   revalidatePath("/orders")
   revalidatePath(`/orders/${id}`)
   return { success: true, data }

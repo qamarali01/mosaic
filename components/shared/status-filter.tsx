@@ -11,16 +11,16 @@ interface StatusFilterProps {
 
 export function StatusFilter({ value, onChange, options, className }: StatusFilterProps) {
   return (
-    <div className={cn("flex items-center gap-0.5 bg-muted rounded-md p-0.5", className)}>
+    <div className={cn("flex items-center gap-0.5 bg-muted/60 rounded-full p-0.5 border border-border/40", className)}>
       {options.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+            "px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150",
             value === opt.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-background text-foreground shadow-sm border border-border/60"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
           )}
         >
           {opt.label}

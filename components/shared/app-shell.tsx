@@ -20,7 +20,7 @@ export function AppShell({ children, user }: AppShellProps) {
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} role={user.role} />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <Topbar user={user} />
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto bg-muted/30">
             {children}
           </main>
         </div>

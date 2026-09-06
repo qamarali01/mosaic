@@ -234,6 +234,51 @@ export interface AuditLog {
   performed_at: string
 }
 
+// ─── Artisan ─────────────────────────────────────────────────────────────────
+
+export type AssignmentStatus =
+  | "pending"
+  | "assigned"
+  | "in_progress"
+  | "completed"
+  | "cancelled"
+
+export interface Artisan {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  location: string | null
+  specializations: string | null
+  notes: string | null
+  status: RecordStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ArtisanAssignment {
+  id: string
+  order_id: string
+  order_item_id: string
+  artisan_id: string
+  quantity: number
+  rate: number | null
+  status: AssignmentStatus
+  expected_delivery_date: string | null
+  actual_delivery_date: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ArtisanAssignmentWithRelations extends ArtisanAssignment {
+  artisan: Artisan
+  order: Pick<Order, "id" | "order_number" | "status">
+  order_item: OrderItemWithProduct
+}
+
 // ─── Server Action Result ─────────────────────────────────────────────────────
 
 export type ActionResult<T = undefined> =
@@ -255,4 +300,16 @@ export interface PaginationParams {
   pageSize?: number
   search?: string
   status?: RecordStatus | "all"
+}
+
+// ─── MCP API Keys ─────────────────────────────────────────────────────────────
+
+export interface McpApiKey {
+  id: string
+  user_id: string
+  name: string
+  key_hash: string
+  role: UserRole
+  last_used_at: string | null
+  created_at: string
 }

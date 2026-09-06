@@ -16,10 +16,10 @@ import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { ProductSheet } from "@/features/products/product-sheet"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { archiveProduct, restoreProduct } from "@/lib/actions/products"
+import { archiveProduct, restoreProduct, deleteProduct } from "@/lib/actions/products"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { Pencil, Archive, RotateCcw, FileText, File } from "lucide-react"
+import { Pencil, Archive, RotateCcw, FileText, File, Trash2 } from "lucide-react"
 import Image from "next/image"
 
 interface ProductDetailClientProps {
@@ -33,6 +33,7 @@ export function ProductDetailClient({ product, mappings, collections, auditLogs 
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [selectedImageIdx, setSelectedImageIdx] = useState(0)
   const [isPending, startTransition] = useTransition()
 
@@ -50,6 +51,19 @@ export function ProductDetailClient({ product, mappings, collections, auditLogs 
         toast.error(result.error)
       }
       setArchiveOpen(false)
+    })
+  }
+
+  function handleDelete() {
+    startTransition(async () => {
+      const result = await deleteProduct(product.id)
+      if (result.success) {
+        toast.success("Product deleted")
+        router.push("/products")
+      } else {
+        toast.error(result.error)
+        setDeleteOpen(false)
+      }
     })
   }
 
@@ -90,6 +104,14 @@ export function ProductDetailClient({ product, mappings, collections, auditLogs 
               <Archive className="mr-1.5 h-3.5 w-3.5" />
             )}
             {product.status === "archived" ? "Restore" : "Archive"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
           </Button>
         </div>
       </div>
@@ -224,6 +246,16 @@ export function ProductDetailClient({ product, mappings, collections, auditLogs 
         confirmLabel={product.status === "archived" ? "Restore" : "Archive"}
         variant={product.status === "archived" ? "default" : "destructive"}
         onConfirm={handleArchiveToggle}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete product?"
+        description={`"${product.name}" will be permanently deleted. This cannot be undone. Products referenced by quotes, orders, or customer mappings cannot be deleted.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
       />
     </div>
   )
