@@ -3,7 +3,7 @@ import { z } from "zod"
 import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
 import { supabase } from "../supabase.js"
-import { requireRole, type McpContext } from "../auth.js"
+import { requireRole, type McpContext } from "../context.js"
 import { mcpSuccess, mcpError } from "../utils/errors.js"
 
 export function registerAdminTools(server: McpServer, ctx: McpContext) {

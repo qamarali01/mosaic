@@ -1,5 +1,5 @@
 import { supabase } from "../supabase.js"
-import type { McpContext } from "../auth.js"
+import type { McpContext } from "../context.js"
 
 type AuditAction =
   | "mcp_create"

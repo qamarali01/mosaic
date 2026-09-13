@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 import { supabase } from "../supabase.js"
-import { requireRole, type McpContext } from "../auth.js"
+import { requireRole, type McpContext } from "../context.js"
 import { mcpSuccess, mcpError } from "../utils/errors.js"
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024    // 5 MB

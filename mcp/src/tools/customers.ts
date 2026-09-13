@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 import { supabase } from "../supabase.js"
-import { requireRole, type McpContext } from "../auth.js"
+import { requireRole, type McpContext } from "../context.js"
 import { logMcpAudit } from "../utils/audit.js"
 import { mcpSuccess, mcpError } from "../utils/errors.js"
 

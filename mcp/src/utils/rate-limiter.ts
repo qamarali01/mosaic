@@ -1,4 +1,4 @@
-import type { UserRole } from "../auth.js"
+import type { UserRole } from "../context.js"
 
 // Requests allowed per minute by role
 const RATE_LIMITS: Record<UserRole, number> = {

@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import type { McpContext } from "../auth.js"
+import type { McpContext } from "../context.js"
 import { registerProductTools } from "./products.js"
 import { registerCollectionTools } from "./collections.js"
 import { registerCustomerTools } from "./customers.js"
