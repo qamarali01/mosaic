@@ -40,8 +40,9 @@ setInterval(() => {
 
 // ── Express app ────────────────────────────────────────────────────────────────
 const app = express()
+app.set("trust proxy", 1) // Railway sits behind a reverse proxy — trust the first hop
 app.use(express.json({ limit: "25mb" }))
-app.use(express.urlencoded({ extended: true })) // needed for POST /authorize form
+app.use(express.urlencoded({ extended: true }))
 
 // Health check
 app.get("/health", (_req, res) => {
