@@ -25,13 +25,19 @@ export async function authenticate(
 ): Promise<McpContext | null> {
   const authHeader = req.headers["authorization"]
   if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid Authorization header. Expected: Bearer msc_..." })
+    res
+      .status(401)
+      .set("WWW-Authenticate", 'Bearer realm="Mosaic MCP", error="invalid_token", error_description="Provide your msc_ API key as a Bearer token"')
+      .json({ error: "Missing or invalid Authorization header. Expected: Bearer msc_..." })
     return null
   }
 
   const rawKey = authHeader.slice(7).trim()
   if (!rawKey.startsWith("msc_")) {
-    res.status(401).json({ error: "Invalid API key format. Keys start with msc_" })
+    res
+      .status(401)
+      .set("WWW-Authenticate", 'Bearer realm="Mosaic MCP", error="invalid_token"')
+      .json({ error: "Invalid API key format. Keys start with msc_" })
     return null
   }
 
