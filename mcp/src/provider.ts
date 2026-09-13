@@ -142,7 +142,8 @@ function authorizeHtml(params: {
     <p>Enter your Mosaic API key to give Claude access to your products, orders, and artisans.</p>
     ${params.error ? `<div class="error">${params.error}</div>` : ""}
     <form method="POST">
-      <input type="hidden" name="state" value="${params.state}" />
+      <input type="hidden" name="response_type" value="code" />
+      <input type="hidden" name="state" value="${params.state ?? ""}" />
       <input type="hidden" name="code_challenge" value="${params.codeChallenge}" />
       <input type="hidden" name="code_challenge_method" value="${params.codeChallengeMethod}" />
       <input type="hidden" name="client_id" value="${params.clientId}" />
@@ -229,7 +230,8 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
       // Redirect back to Claude.ai with the code
       const redirectUrl = new URL(params.redirectUri)
       redirectUrl.searchParams.set("code", code)
-      if (params.state) redirectUrl.searchParams.set("state", params.state)
+      // Always set state — Claude.ai requires it even if empty
+      redirectUrl.searchParams.set("state", params.state ?? "")
       res.redirect(302, redirectUrl.toString())
     } else {
       // Show the authorization form
