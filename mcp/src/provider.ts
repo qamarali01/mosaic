@@ -317,6 +317,9 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
       token,
       clientId: keyRecord.id,
       scopes: ["mcp"],
+      // API keys don't expire — set far-future timestamp (year 2099)
+      // SDK's requireBearerAuth middleware requires expiresAt to be a number
+      expiresAt: 4070908800,
       extra: {
         userId: keyRecord.user_id,
         role: keyRecord.role,
