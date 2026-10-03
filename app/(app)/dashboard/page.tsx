@@ -16,6 +16,7 @@ type QuoteWithItems = {
 type OrderWithItems = {
   id: string
   order_number: string
+  system_number: string
   status: string
   created_at: string
   customer: { name: string } | null
@@ -59,7 +60,7 @@ async function getDashboardData() {
       .limit(5),
     supabase
       .from("orders")
-      .select("id, order_number, status, created_at, customer:customers(name), items:order_items(unit_price, quantity, currency)")
+      .select("id, order_number, system_number, status, created_at, customer:customers(name), items:order_items(unit_price, quantity, currency)")
       .order("created_at", { ascending: false })
       .limit(5),
   ])
@@ -220,6 +221,7 @@ export default async function DashboardPage() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-mono font-medium">{o.order_number}</p>
+                      <p className="text-xs font-mono text-muted-foreground">System ID: {o.system_number}</p>
                       <p className="text-xs text-muted-foreground truncate">{o.customer?.name}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

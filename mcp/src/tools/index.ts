@@ -10,6 +10,7 @@ import { registerArtisanTools } from "./artisans.js"
 import { registerAssignmentTools } from "./assignments.js"
 import { registerFileTools } from "./files.js"
 import { registerAdminTools } from "./admin.js"
+import { registerExportDocumentTools } from "./export-documents.js"
 
 export function registerAllTools(server: McpServer, ctx: McpContext): void {
   registerProductTools(server, ctx)
@@ -21,5 +22,6 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
   registerArtisanTools(server, ctx)
   registerAssignmentTools(server, ctx)
   registerFileTools(server, ctx)
+  registerExportDocumentTools(server, ctx)
   registerAdminTools(server, ctx)
 }

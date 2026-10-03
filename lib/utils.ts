@@ -27,7 +27,7 @@ export function generateQuoteNumber(): string {
   return `Q-${year}-${random}`
 }
 
-export function generateOrderNumber(): string {
+export function generateSystemNumber(): string {
   const year = new Date().getFullYear()
   const random = Math.floor(Math.random() * 9000) + 1000
   return `O-${year}-${random}`

@@ -96,10 +96,10 @@ INSERT INTO quote_items (id, quote_id, product_id, customer_sku, unit_price, cur
 
 -- ─── Orders ──────────────────────────────────────────────────
 
-INSERT INTO orders (id, order_number, customer_id, quote_id, status, notes) VALUES
-  ('00000000-0000-0000-000a-000000000001', 'O-2026-2001', '00000000-0000-0000-0003-000000000003', NULL,                                   'confirmed',     'Handmade Hub reorder — Eid collection.'),
-  ('00000000-0000-0000-000a-000000000002', 'O-2026-2002', '00000000-0000-0000-0003-000000000002', NULL,                                   'in_production', 'Summer basket range for US market.'),
-  ('00000000-0000-0000-000a-000000000003', 'O-2026-2003', '00000000-0000-0000-0003-000000000001', '00000000-0000-0000-0008-000000000001', 'pending',       'Created from quote Q-2026-1001.');
+INSERT INTO orders (id, system_number, order_number, order_number_type, customer_id, quote_id, status, notes) VALUES
+  ('00000000-0000-0000-000a-000000000001', 'O-2026-2001', 'HH-2026-001', 'internal', '00000000-0000-0000-0003-000000000003', NULL,                                   'confirmed',     'Handmade Hub reorder — Eid collection.'),
+  ('00000000-0000-0000-000a-000000000002', 'O-2026-2002', 'WCM-SUMMER-26', 'internal', '00000000-0000-0000-0003-000000000002', NULL,                                   'in_production', 'Summer basket range for US market.'),
+  ('00000000-0000-0000-000a-000000000003', 'O-2026-2003', 'Q-2026-1001', 'other', '00000000-0000-0000-0003-000000000001', '00000000-0000-0000-0008-000000000001', 'pending',       'Created from quote Q-2026-1001.');
 
 INSERT INTO order_items (id, order_id, product_id, customer_sku, unit_price, currency, quantity, sort_order) VALUES
   -- O-2026-2001 (Handmade Hub — confirmed)

@@ -4,7 +4,7 @@ import { supabase } from "../supabase.js"
 import { requireRole, type McpContext } from "../context.js"
 import { logMcpAudit } from "../utils/audit.js"
 import { mcpSuccess, mcpError } from "../utils/errors.js"
-import { generateOrderNumber } from "../utils/numbers.js"
+import { generateSystemNumber } from "../utils/numbers.js"
 import { onOrderCreated } from "../utils/transitions.js"
 
 const orderItemSchema = z.object({
@@ -49,16 +49,18 @@ export function registerOrderTools(server: McpServer, ctx: McpContext) {
 
   server.tool("create_order", "Create a new order with line items.", {
     customer_id: z.string().uuid(),
+    order_number: z.string().min(1).max(100),
+    order_number_type: z.enum(["customer_po", "internal", "other"]).default("other"),
     quote_id: z.string().uuid().optional(),
     notes: z.string().optional(),
     items: z.array(orderItemSchema).min(1),
   }, async (input) => {
     try { requireRole(ctx, "sales") } catch (e: unknown) { return mcpError((e as Error).message) }
 
-    const order_number = await generateOrderNumber()
+    const system_number = await generateSystemNumber()
     const { data: order, error: oErr } = await supabase
       .from("orders")
-      .insert({ order_number, customer_id: input.customer_id, quote_id: input.quote_id ?? null, notes: input.notes ?? null, created_by: ctx.userId })
+      .insert({ system_number, order_number: input.order_number, order_number_type: input.order_number_type, customer_id: input.customer_id, quote_id: input.quote_id ?? null, notes: input.notes ?? null, created_by: ctx.userId })
       .select()
       .single()
     if (oErr) return mcpError(oErr.message)
@@ -73,11 +75,13 @@ export function registerOrderTools(server: McpServer, ctx: McpContext) {
 
     await onOrderCreated(order.id, input.quote_id ?? null)
     await logMcpAudit({ tableName: "orders", recordId: order.id, action: "mcp_create", newData: order, ctx })
-    return mcpSuccess({ order_id: order.id, order_number })
+    return mcpSuccess({ order_id: order.id, order_number: order.order_number, system_number: order.system_number })
   })
 
   server.tool("update_order", "Update an order's notes or line items. IMPORTANT: items is a full replacement — include all items you want to keep. Only works on pending/confirmed orders.", {
     order_id: z.string().uuid(),
+    order_number: z.string().min(1).max(100).optional(),
+    order_number_type: z.enum(["customer_po", "internal", "other"]).optional(),
     notes: z.string().optional(),
     items: z.array(orderItemSchema).min(1).optional(),
   }, async (input) => {

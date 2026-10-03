@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { OrderWithRelations, OrderStatus, CustomerProductMappingWithRelations, Artisan, ArtisanAssignmentWithRelations, Product } from "@/types"
+import { AuditLog, OrderNumberType, OrderWithRelations, OrderStatus, CustomerProductMappingWithRelations, Artisan, ArtisanAssignmentWithRelations, Product } from "@/types"
 
 type CustomerOption = { id: string; name: string; currency: string }
 type ActiveProduct = Pick<Product, "id" | "internal_sku" | "name">
@@ -21,7 +21,9 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { PageHeader } from "@/components/shared/page-header"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { OrderAssignments } from "@/features/orders/order-assignments"
-import { createOrder, updateOrder, updateOrderStatus } from "@/lib/actions/orders"
+import { ExportDocuments } from "@/features/orders/export-documents"
+import { OrderActivity } from "@/features/orders/order-activity"
+import { createOrder, updateOrder, updateOrderNumber, updateOrderStatus } from "@/lib/actions/orders"
 import { getMappingsByCustomer, upsertMapping } from "@/lib/actions/customers"
 import { toast } from "sonner"
 import { Loader2, Plus, Trash2 } from "lucide-react"
@@ -43,6 +45,7 @@ interface OrderBuilderProps {
   activeProducts: ActiveProduct[]
   order?: OrderWithRelations | null
   artisans?: Artisan[]
+  activity?: AuditLog[]
 }
 
 const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
@@ -54,12 +57,14 @@ const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   cancelled: [],
 }
 
-export function OrderBuilder({ customers, activeProducts, order, artisans = [] }: OrderBuilderProps) {
+export function OrderBuilder({ customers, activeProducts, order, artisans = [], activity = [] }: OrderBuilderProps) {
   const router = useRouter()
   const isEditing = !!order
   const readOnly = isEditing && !["pending", "confirmed"].includes(order.status)
 
   const [customerId, setCustomerId] = useState(order?.customer_id ?? "")
+  const [orderNumber, setOrderNumber] = useState(order?.order_number ?? "")
+  const [orderNumberType, setOrderNumberType] = useState<OrderNumberType>(order?.order_number_type ?? "other")
   const [items, setItems] = useState<OrderItem[]>(
     order?.items.map((i) => ({
       product_id: i.product_id,
@@ -186,6 +191,8 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
     startTransition(async () => {
       if (isEditing) {
         const result = await updateOrder(order.id, {
+          order_number: orderNumber,
+          order_number_type: orderNumberType,
           notes: (fd.get("notes") as string) || null,
           items: items.map((item, i) => ({
             product_id: item.product_id,
@@ -206,6 +213,8 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
       } else {
         const result = await createOrder({
           customer_id: customerId,
+          order_number: orderNumber,
+          order_number_type: orderNumberType,
           notes: (fd.get("notes") as string) || null,
           items: items.map((item, i) => ({
             product_id: item.product_id,
@@ -241,6 +250,19 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
     })
   }
 
+  function handleOrderNumberSave() {
+    if (!order) return
+    startTransition(async () => {
+      const result = await updateOrderNumber(order.id, orderNumber, orderNumberType)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Order Number updated")
+      router.refresh()
+    })
+  }
+
   const existingAssignments = isEditing ? ((order as unknown as { assignments?: unknown[] }).assignments ?? []) : []
   const hasAssignments = (existingAssignments as { status: string }[]).filter((a) => a.status !== "cancelled").length > 0
 
@@ -252,7 +274,7 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
     <>
       <PageHeader
         title={isEditing ? order.order_number : "New Order"}
-        description={isEditing ? order.customer.name : "Create a customer order."}
+          description={isEditing ? `${order.customer.name} · System ID: ${order.system_number}` : "Create a customer order."}
         back={{ href: "/orders", label: "Orders" }}
       >
         <div className="flex items-center gap-2">
@@ -298,13 +320,20 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
                     </span>
                   )}
               </TabsTrigger>
+              <TabsTrigger value="export-documents" className="text-xs">
+                Export Documents
+                {(order.export_documents?.length ?? 0) > 0 && (
+                  <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium">{order.export_documents!.length}</span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="text-xs">Activity</TabsTrigger>
             </TabsList>
           </div>
 
           <TabsContent value="order" className="mt-0">
             <div className="p-6 max-w-4xl">
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid sm:grid-cols-3 gap-4">
+                <div className="grid sm:grid-cols-4 gap-4">
                   <div className="space-y-1.5">
                     <Label>Customer *</Label>
                     {isEditing ? (
@@ -324,6 +353,21 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
                       </Select>
                     )}
                   </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="order_number">Order Number *</Label>
+                    <Input id="order_number" name="order_number" value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Number Type</Label>
+                    <Select value={orderNumberType} onValueChange={(value) => setOrderNumberType(value as OrderNumberType)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="customer_po">Customer PO</SelectItem>
+                        <SelectItem value="internal">Internal Order Number</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor="notes">Notes</Label>
                     <Textarea
@@ -336,6 +380,12 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
                     />
                   </div>
                 </div>
+
+                {isEditing && (
+                  <div className="flex justify-end">
+                    <Button type="button" size="sm" onClick={handleOrderNumberSave} disabled={isPending}>Save Order Number</Button>
+                  </div>
+                )}
 
                 <Separator />
 
@@ -444,11 +494,17 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
               artisans={artisans}
             />
           </TabsContent>
+          <TabsContent value="export-documents" className="mt-0">
+            <ExportDocuments orderId={order.id} shipments={order.shipments ?? []} documents={order.export_documents ?? []} />
+          </TabsContent>
+          <TabsContent value="activity" className="mt-0">
+            <OrderActivity activity={activity} />
+          </TabsContent>
         </Tabs>
       ) : (
         <div className="p-6 max-w-4xl">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid sm:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-4 gap-4">
               <div className="space-y-1.5">
                 <Label>Customer *</Label>
                 <Select value={customerId} onValueChange={handleCustomerChange}>
@@ -461,6 +517,21 @@ export function OrderBuilder({ customers, activeProducts, order, artisans = [] }
                         {c.name}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="order_number">Order Number *</Label>
+                <Input id="order_number" name="order_number" value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} required placeholder="PO-2434 or your internal reference" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Number Type</Label>
+                <Select value={orderNumberType} onValueChange={(value) => setOrderNumberType(value as OrderNumberType)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="customer_po">Customer PO</SelectItem>
+                    <SelectItem value="internal">Internal Order Number</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

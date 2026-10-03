@@ -7,11 +7,12 @@ import {
   Order,
   OrderWithRelations,
   OrderStatus,
+  OrderNumberType,
   QuoteWithRelations,
   PaginatedResult,
   PaginationParams,
 } from "@/types"
-import { generateOrderNumber } from "@/lib/utils"
+import { generateSystemNumber } from "@/lib/utils"
 import { logAudit } from "@/lib/utils/audit"
 
 export async function getOrders(
@@ -25,7 +26,7 @@ export async function getOrders(
     .select(`*, customer:customers(id, name), quote:quotes(id, quote_number), items:order_items(*, product:products(id, internal_sku, name))`, { count: "exact" })
 
   if (status !== "all") query = query.eq("status", status)
-  if (search) query = query.ilike("order_number", `%${search}%`)
+  if (search) query = query.or(`order_number.ilike.%${search}%,system_number.ilike.%${search}%`)
 
   const from = (page - 1) * pageSize
   const { data, error, count } = await query
@@ -42,7 +43,7 @@ export async function getOrder(id: string): Promise<OrderWithRelations | null> {
   const supabase = await createClient()
   const { data } = await supabase
     .from("orders")
-    .select(`*, customer:customers(id, name, currency, payment_terms), quote:quotes(id, quote_number), items:order_items(*, product:products(id, internal_sku, name)), assignments:artisan_assignments(*, artisan:artisans(id, name))`)
+    .select(`*, customer:customers(id, name, currency, payment_terms), quote:quotes(id, quote_number), items:order_items(*, product:products(id, internal_sku, name)), assignments:artisan_assignments(*, artisan:artisans(id, name)), shipments:order_shipments(*), export_documents(*)`)
     .eq("id", id)
     .single()
   return data as OrderWithRelations | null
@@ -50,6 +51,8 @@ export async function getOrder(id: string): Promise<OrderWithRelations | null> {
 
 export async function createOrder(payload: {
   customer_id: string
+  order_number: string
+  order_number_type?: OrderNumberType
   quote_id?: string | null
   notes?: string | null
   items: Array<{
@@ -65,13 +68,16 @@ export async function createOrder(payload: {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Not authenticated" }
+  if (!payload.order_number.trim()) return { success: false, error: "Order Number is required" }
 
-  const order_number = generateOrderNumber()
+  const system_number = generateSystemNumber()
 
   const { data: order, error } = await supabase
     .from("orders")
     .insert({
-      order_number,
+       system_number,
+       order_number: payload.order_number.trim(),
+       order_number_type: payload.order_number_type ?? "other",
       customer_id: payload.customer_id,
       quote_id: payload.quote_id ?? null,
       notes: payload.notes ?? null,
@@ -125,9 +131,38 @@ export async function updateOrderStatus(
   return { success: true, data }
 }
 
+export async function updateOrderNumber(
+  id: string,
+  orderNumber: string,
+  orderNumberType: OrderNumberType
+): Promise<ActionResult<Order>> {
+  const normalizedNumber = orderNumber.trim()
+  if (!normalizedNumber) return { success: false, error: "Order Number is required" }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Not authenticated" }
+
+  const { data: old } = await supabase.from("orders").select("*").eq("id", id).single()
+  if (!old) return { success: false, error: "Order not found" }
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ order_number: normalizedNumber, order_number_type: orderNumberType })
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) return { success: false, error: error.message }
+
+  await logAudit(supabase, { tableName: "orders", recordId: id, action: "update", oldData: old, newData: data, performedBy: user.id })
+  revalidatePath("/orders")
+  revalidatePath(`/orders/${id}`)
+  return { success: true, data }
+}
+
 export async function updateOrder(
   id: string,
   payload: {
+    order_number: string
+    order_number_type: OrderNumberType
     notes?: string | null
     items: Array<{
       product_id: string
@@ -143,12 +178,13 @@ export async function updateOrder(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Not authenticated" }
+  if (!payload.order_number.trim()) return { success: false, error: "Order Number is required" }
 
   const { data: old } = await supabase.from("orders").select("*").eq("id", id).single()
 
   const { data, error } = await supabase
     .from("orders")
-    .update({ notes: payload.notes ?? null })
+    .update({ order_number: payload.order_number.trim(), order_number_type: payload.order_number_type, notes: payload.notes ?? null })
     .eq("id", id)
     .select()
     .single()
@@ -169,7 +205,7 @@ export async function updateOrder(
     recordId: id,
     action: "update",
     oldData: old,
-    newData: { ...data, notes: payload.notes },
+    newData: { ...data, notes: payload.notes, order_number: payload.order_number, order_number_type: payload.order_number_type },
     performedBy: user.id,
   })
   revalidatePath("/orders")
@@ -180,6 +216,8 @@ export async function updateOrder(
 export async function createOrderFromQuote(quote: QuoteWithRelations): Promise<ActionResult<Order>> {
   return createOrder({
     customer_id: quote.customer_id,
+    order_number: quote.quote_number,
+    order_number_type: "other",
     quote_id: quote.id,
     notes: `Created from quote ${quote.quote_number}`,
     items: quote.items.map((item, i) => ({

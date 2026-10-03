@@ -91,7 +91,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         supabase.from("customers").select("id, name").ilike("name", q).eq("status", "active").limit(5),
         supabase.from("artisans").select("id, name, location").ilike("name", q).eq("status", "active").limit(5),
         supabase.from("quotes").select("id, quote_number, status").ilike("quote_number", q).limit(5),
-        supabase.from("orders").select("id, order_number, status").ilike("order_number", q).limit(5),
+        supabase.from("orders").select("id, order_number, system_number, status").or(`order_number.ilike.${q},system_number.ilike.${q}`).limit(5),
         supabase.from("customer_product_mappings").select("id, customer_sku, product:products(id, name), customer:customers(name)").ilike("customer_sku", q).limit(5),
       ])
 
@@ -126,7 +126,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         all.push({ id: q.id, label: q.quote_number, sublabel: q.status, href: `/quotes/${q.id}`, type: "quote" })
       )
       orders.data?.forEach((o) =>
-        all.push({ id: o.id, label: o.order_number, sublabel: o.status, href: `/orders/${o.id}`, type: "order" })
+        all.push({ id: o.id, label: o.order_number, sublabel: `${o.status} · ${o.system_number}`, href: `/orders/${o.id}`, type: "order" })
       )
 
       setResults(all)

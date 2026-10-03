@@ -11,7 +11,24 @@ export type OrderStatus =
   | "delivered"
   | "cancelled"
 export type AddressType = "billing" | "shipping"
-export type AuditAction = "create" | "update" | "archive" | "restore"
+export type AuditAction = "create" | "update" | "archive" | "restore" | "delete" | "mcp_create" | "mcp_update" | "mcp_archive" | "mcp_restore" | "mcp_delete"
+export type ShipmentStatus = "draft" | "shipped" | "documents_complete"
+export type ExportDocumentType =
+  | "buyer_purchase_order"
+  | "proforma_invoice"
+  | "commercial_invoice"
+  | "packing_list"
+  | "shipping_bill"
+  | "leo_copy"
+  | "bill_of_lading"
+  | "air_waybill"
+  | "e_way_bill"
+  | "certificate_of_origin"
+  | "insurance_certificate"
+  | "inward_remittance"
+  | "ebrc"
+  | "other"
+export type OrderNumberType = "customer_po" | "internal" | "other"
 
 // ─── User ────────────────────────────────────────────────────────────────────
 
@@ -188,7 +205,9 @@ export interface QuoteItemWithProduct extends QuoteItem {
 
 export interface Order {
   id: string
+  system_number: string
   order_number: string
+  order_number_type: OrderNumberType
   customer_id: string
   quote_id: string | null
   status: OrderStatus
@@ -210,10 +229,45 @@ export interface OrderItem {
   sort_order: number
 }
 
+export interface OrderShipment {
+  id: string
+  order_id: string
+  shipment_number: string
+  status: ShipmentStatus
+  transport_mode: string | null
+  shipment_date: string | null
+  shipping_bill_number: string | null
+  shipping_bill_date: string | null
+  leo_date: string | null
+  bill_of_lading_or_awb_number: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ExportDocument {
+  id: string
+  order_id: string
+  shipment_id: string | null
+  document_type: ExportDocumentType
+  document_number: string | null
+  document_date: string | null
+  filename: string
+  storage_path: string
+  mime_type: string | null
+  file_size: number | null
+  notes: string | null
+  uploaded_by: string | null
+  created_at: string
+}
+
 export interface OrderWithRelations extends Order {
   customer: Customer
   quote: Quote | null
   items: OrderItemWithProduct[]
+  shipments?: OrderShipment[]
+  export_documents?: ExportDocument[]
 }
 
 export interface OrderItemWithProduct extends OrderItem {

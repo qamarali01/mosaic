@@ -25,15 +25,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
   const filtered = orders.filter((o) =>
     o.order_number.toLowerCase().includes(search.toLowerCase()) ||
+    o.system_number.toLowerCase().includes(search.toLowerCase()) ||
     o.customer.name.toLowerCase().includes(search.toLowerCase())
   )
 
   const columns: ColumnDef<OrderWithRelations>[] = [
     {
       accessorKey: "order_number",
-      header: "Order",
+       header: "Order Number",
       cell: ({ row }) => (
-        <span className="font-mono text-sm font-medium">{row.original.order_number}</span>
+        <div><span className="font-mono text-sm font-medium">{row.original.order_number}</span><p className="font-mono text-xs text-muted-foreground">System ID: {row.original.system_number}</p></div>
       ),
     },
     {

@@ -108,6 +108,8 @@ export function registerQuoteTools(server: McpServer, ctx: McpContext) {
 
   server.tool("convert_quote_to_order", "Convert an accepted quote into an order. The quote will be marked as accepted.", {
     quote_id: z.string().uuid(),
+    order_number: z.string().min(1).max(100),
+    order_number_type: z.enum(["customer_po", "internal", "other"]).default("other"),
     notes: z.string().optional(),
   }, async (input) => {
     try { requireRole(ctx, "sales") } catch (e: unknown) { return mcpError((e as Error).message) }
@@ -119,13 +121,13 @@ export function registerQuoteTools(server: McpServer, ctx: McpContext) {
       .single()
     if (qErr || !quote) return mcpError("Quote not found")
 
-    const { generateOrderNumber } = await import("../utils/numbers.js")
+    const { generateSystemNumber } = await import("../utils/numbers.js")
     const { onOrderCreated } = await import("../utils/transitions.js")
 
-    const order_number = await generateOrderNumber()
+    const system_number = await generateSystemNumber()
     const { data: order, error: oErr } = await supabase
       .from("orders")
-      .insert({ order_number, customer_id: quote.customer_id, quote_id: quote.id, notes: input.notes ?? quote.notes, created_by: ctx.userId })
+      .insert({ system_number, order_number: input.order_number, order_number_type: input.order_number_type, customer_id: quote.customer_id, quote_id: quote.id, notes: input.notes ?? quote.notes, created_by: ctx.userId })
       .select()
       .single()
     if (oErr) return mcpError(oErr.message)
@@ -143,6 +145,6 @@ export function registerQuoteTools(server: McpServer, ctx: McpContext) {
     await supabase.from("order_items").insert(items)
     await onOrderCreated(order.id, quote.id)
     await logMcpAudit({ tableName: "orders", recordId: order.id, action: "mcp_create", newData: order, ctx })
-    return mcpSuccess({ order_id: order.id, order_number })
+    return mcpSuccess({ order_id: order.id, order_number: order.order_number, system_number: order.system_number })
   })
 }
