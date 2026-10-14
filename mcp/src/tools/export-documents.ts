@@ -4,7 +4,7 @@ import { supabase } from "../supabase.js"
 import { requireRole, type McpContext } from "../context.js"
 import { logMcpAudit } from "../utils/audit.js"
 import { mcpError, mcpSuccess } from "../utils/errors.js"
-import { createInvoiceXlsx, createPackingXlsx, createSimplePdf } from "../document-generator.js"
+import { createInvoiceXlsx, createPackingXlsx, convertXlsxToPdf } from "../document-generator.js"
 
 const documentTypes = ["buyer_purchase_order", "proforma_invoice", "commercial_invoice", "packing_list", "shipping_bill", "leo_copy", "bill_of_lading", "air_waybill", "e_way_bill", "certificate_of_origin", "insurance_certificate", "inward_remittance", "ebrc", "other"] as const
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
@@ -30,30 +30,45 @@ function requireSales(ctx: McpContext) {
   }
 }
 
-async function generateQueuedDocument(documentId: string, kind: "proforma" | "commercial_invoice" | "packing_list", quoteId: string | undefined, shipmentId: string | undefined, proposalId: string | undefined) {
+export async function generateQueuedDocument(documentId: string, kind: "proforma" | "commercial_invoice" | "packing_list", quoteId: string | undefined, shipmentId: string | undefined, proposalId: string | undefined) {
   await supabase.from("generated_documents").update({ status: "processing" }).eq("id", documentId)
   try {
     let xlsx: Buffer
-    let pdf: Buffer
     if (kind === "packing_list") {
       const { data: proposal } = await supabase.from("packing_proposals").select("shipment_id, extracted_data").eq("id", proposalId!).eq("status", "confirmed").single()
       const { data: shipment } = await supabase.from("shipments").select("shipment_number, customer:customers(name)").eq("id", shipmentId!).single()
       if (!proposal || !shipment) throw new Error("Confirmed packing proposal or shipment not found")
       const extracted = proposal.extracted_data as { cartons: Array<{ carton_number: string; quantity: number; gross_weight_kg: number; dimension_unit: string; length?: number | null; width?: number | null; height?: number | null; items: Array<{ order_item_id: string; quantity: number }> }> }
       const itemIds = extracted.cartons.flatMap((carton) => carton.items.map((item) => item.order_item_id))
-      const { data: items } = await supabase.from("order_items").select("id, customer_sku, product:products(internal_sku)").in("id", itemIds)
+      const { data: items } = await supabase.from("order_items").select("id, customer_sku, quantity, customer_description, product:products(internal_sku,name,description)").in("id", itemIds)
       const itemMap = new Map((items ?? []).map((item) => [item.id, item]))
+      const packedQuantities = new Map<string, number>()
+      for (const carton of extracted.cartons) {
+        for (const item of carton.items) {
+          const source = itemMap.get(item.order_item_id)
+          if (!source) throw new Error(`Packing item ${item.order_item_id} is not part of this shipment`)
+          const total = (packedQuantities.get(item.order_item_id) ?? 0) + item.quantity
+          if (total > source.quantity) throw new Error(`${source.customer_sku} is packed ${total} times but the shipment quantity is ${source.quantity}`)
+          packedQuantities.set(item.order_item_id, total)
+        }
+      }
       const cartons = extracted.cartons.map((carton) => ({
         cartonNumber: carton.carton_number,
-        quantity: carton.quantity,
-        itemCodes: carton.items.map((item) => itemMap.get(item.order_item_id)?.customer_sku ?? "UNKNOWN").join(", "),
+        items: carton.items.map((item) => {
+          const source = itemMap.get(item.order_item_id)!
+          const product = source.product as unknown as { description?: string | null; name?: string | null }
+          return {
+            itemCode: source.customer_sku,
+            quantity: item.quantity,
+            description: source.customer_description ?? product.description ?? product.name ?? null,
+          }
+        }),
         grossWeightKg: carton.gross_weight_kg,
         netWeightKg: Math.max(0, carton.gross_weight_kg - 2.5),
         dimensions: [carton.length, carton.width, carton.height].filter((value) => value != null).join(" x ") + (carton.dimension_unit ? ` ${carton.dimension_unit}` : ""),
       }))
       const customer = (shipment.customer as unknown as { name?: string } | null)?.name ?? ""
       xlsx = await createPackingXlsx({ invoiceNumber: shipment.shipment_number, date: new Date().toISOString().slice(0, 10), consignee: customer, cartons })
-      pdf = await createSimplePdf("PACKING LIST", cartons.map((carton) => `Carton ${carton.cartonNumber}: ${carton.itemCodes} | ${carton.quantity} pcs | ${carton.grossWeightKg} kg gross | ${carton.dimensions}`))
     } else {
       let resolvedQuoteId = quoteId
       if (!resolvedQuoteId && shipmentId) {
@@ -74,8 +89,8 @@ async function generateQueuedDocument(documentId: string, kind: "proforma" | "co
       }
       if (!lines.length) throw new Error("No invoice lines found")
       xlsx = await createInvoiceXlsx({ title: kind === "proforma" ? "Proforma Invoice" : "Invoice", invoiceNumber: kind === "proforma" ? null : invoiceNumber, date: new Date().toISOString().slice(0, 10), consignee: customer, currency: lines[0]?.currency ?? "USD", lines })
-      pdf = await createSimplePdf(kind === "proforma" ? "PROFORMA INVOICE" : "COMMERCIAL INVOICE", lines.map((line) => `${line.itemCode} | ${line.description} | ${line.quantity} | ${line.rate}`))
     }
+    const pdf = await convertXlsxToPdf(xlsx, `${documentId}.xlsx`)
     const base = `generated/${documentId}`
     const xlsxPath = `${base}.xlsx`
     const pdfPath = `${base}.pdf`
@@ -200,8 +215,7 @@ export function registerExportDocumentTools(server: McpServer, ctx: McpContext) 
     }
     const { data, error } = await supabase.from("generated_documents").insert({ kind: input.kind, quote_id: input.quote_id ?? null, shipment_id: input.shipment_id ?? null, proposal_id: input.proposal_id ?? null, source_snapshot: input, created_by: ctx.userId }).select("id, kind, status").single()
     if (error) return mcpError(error.message)
-    const generated = await generateQueuedDocument(data.id, input.kind, input.quote_id, input.shipment_id, input.proposal_id)
-    return mcpSuccess({ ...data, ...generated })
+    return mcpSuccess({ ...data, status_note: "Queued for document generation." })
   })
 
   server.tool("get_generated_document", "Get a generated document and fresh five-minute download URLs for its XLSX and PDF files.", {

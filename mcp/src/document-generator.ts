@@ -1,5 +1,12 @@
 import ExcelJS from "exceljs"
 import PDFDocument from "pdfkit"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+
+const execFileAsync = promisify(execFile)
 
 export interface InvoiceLine {
   itemCode: string
@@ -28,8 +35,11 @@ export interface PackingData {
   consigneeAddress?: string | null
   cartons: Array<{
     cartonNumber: string
-    quantity: number
-    itemCodes: string
+    items: Array<{
+      itemCode: string
+      quantity: number
+      description?: string | null
+    }>
     grossWeightKg: number
     netWeightKg: number
     dimensions: string
@@ -91,23 +101,73 @@ export async function createPackingXlsx(data: PackingData): Promise<Buffer> {
   sheet.getCell("A22").value = data.consignee
   sheet.getCell("A23").value = data.consigneeAddress ?? ""
   const firstRow = 37
-  data.cartons.forEach((carton, index) => {
-    const row = firstRow + index * 4
-    sheet.getCell(`A${row}`).value = carton.cartonNumber
-    sheet.getCell(`B${row}`).value = carton.quantity
-    sheet.getCell(`C${row}`).value = carton.itemCodes
-    sheet.getCell(`E${row}`).value = carton.netWeightKg
-    sheet.getCell(`F${row}`).value = carton.grossWeightKg
-    sheet.getCell(`G${row}`).value = carton.dimensions
-  })
-  const endRow = firstRow + Math.max(0, data.cartons.length - 1) * 4
-  sheet.getCell(`A${endRow + 3}`).value = "TOTAL QUANTITY (Pcs):"
-  sheet.getCell(`B${endRow + 3}`).value = { formula: `SUM(B${firstRow}:B${endRow})` }
-  sheet.getCell(`A${endRow + 4}`).value = "NET WEIGHT (Kg):"
-  sheet.getCell(`B${endRow + 4}`).value = { formula: `SUM(E${firstRow}:E${endRow})` }
-  sheet.getCell(`A${endRow + 5}`).value = "GROSS WEIGHT (Kg):"
-  sheet.getCell(`B${endRow + 5}`).value = { formula: `SUM(F${firstRow}:F${endRow})` }
-  sheet.pageSetup.printArea = `A1:I${Math.max(77, endRow + 8)}`
+  const originalTotalsRow = 69
+  const bodyRows = data.cartons.reduce((total, carton) => total + Math.max(3, carton.items.length) + 1, 0)
+  const requiredTotalsRow = firstRow + bodyRows
+  const totalsRow = Math.max(originalTotalsRow, requiredTotalsRow)
+  const extraRows = Math.max(0, totalsRow - originalTotalsRow)
+
+  if (extraRows > 0) {
+    sheet.spliceRows(originalTotalsRow, 0, ...Array.from({ length: extraRows }, () => []))
+  }
+
+  // Remove the template's fixed three-row carton merges before creating
+  // variable-height groups for cartons with more than three items.
+  const mergedRanges = Object.keys((sheet as unknown as { _merges: Record<string, unknown> })._merges ?? {})
+  for (const merged of mergedRanges) {
+    const range = merged.split(":")
+    const start = Number(sheet.getCell(range[0]).row)
+    const end = Number(sheet.getCell(range[range.length - 1]).row)
+    if (start <= totalsRow && end >= firstRow) sheet.unMergeCells(merged)
+  }
+
+  const styleSource = sheet.getRow(firstRow)
+  for (let row = firstRow; row < totalsRow; row += 1) {
+    const target = sheet.getRow(row)
+    target.height = styleSource.height
+    for (let column = 1; column <= 9; column += 1) {
+      target.getCell(column).style = { ...styleSource.getCell(column).style }
+    }
+    for (let column = 1; column <= 9; column += 1) target.getCell(column).value = null
+  }
+
+  let cursor = firstRow
+  const totalQuantityFormulaRows: number[] = []
+  for (const carton of data.cartons) {
+    const itemRows = Math.max(3, carton.items.length)
+    const endRow = cursor + itemRows - 1
+    sheet.mergeCells(`A${cursor}:A${endRow}`)
+    sheet.mergeCells(`E${cursor}:E${endRow}`)
+    sheet.mergeCells(`F${cursor}:F${endRow}`)
+    sheet.mergeCells(`G${cursor}:G${endRow}`)
+    sheet.getCell(`A${cursor}`).value = carton.cartonNumber
+    sheet.getCell(`E${cursor}`).value = carton.netWeightKg
+    sheet.getCell(`F${cursor}`).value = carton.grossWeightKg
+    sheet.getCell(`G${cursor}`).value = carton.dimensions
+
+    carton.items.forEach((item, itemIndex) => {
+      const row = cursor + itemIndex
+      sheet.getCell(`B${row}`).value = item.quantity
+      sheet.getCell(`C${row}`).value = item.itemCode
+      sheet.getCell(`D${row}`).value = item.description ?? null
+      totalQuantityFormulaRows.push(row)
+    })
+    cursor = endRow + 2
+  }
+
+  const finalTotalsRow = Math.max(totalsRow, cursor)
+  for (let row = cursor; row < finalTotalsRow + 3; row += 1) {
+    for (let column = 1; column <= 9; column += 1) sheet.getCell(row, column).value = null
+  }
+  sheet.getCell(`A${finalTotalsRow}`).value = "TOTAL QUANTITY (Pcs):"
+  sheet.getCell(`B${finalTotalsRow}`).value = totalQuantityFormulaRows.length
+    ? { formula: totalQuantityFormulaRows.map((row) => `B${row}`).join("+") }
+    : 0
+  sheet.getCell(`A${finalTotalsRow + 1}`).value = "NET WEIGHT (Kg):"
+  sheet.getCell(`B${finalTotalsRow + 1}`).value = data.cartons.reduce((total, carton) => total + carton.netWeightKg, 0)
+  sheet.getCell(`A${finalTotalsRow + 2}`).value = "GROSS WEIGHT (Kg):"
+  sheet.getCell(`B${finalTotalsRow + 2}`).value = data.cartons.reduce((total, carton) => total + carton.grossWeightKg, 0)
+  sheet.pageSetup.printArea = `A1:I${Math.max(77, finalTotalsRow + 8)}`
   return Buffer.from(await workbook.xlsx.writeBuffer())
 }
 
@@ -123,4 +183,18 @@ export async function createSimplePdf(title: string, rows: string[]): Promise<Bu
     rows.forEach((row) => pdf.text(row))
     pdf.end()
   })
+}
+
+export async function convertXlsxToPdf(xlsx: Buffer, filename: string): Promise<Buffer> {
+  const directory = await mkdtemp(join(tmpdir(), "mosaic-doc-"))
+  const inputPath = join(directory, filename)
+  const outputPath = join(directory, `${basename(filename, ".xlsx")}.pdf`)
+  const converter = process.env.MOSAIC_PDF_CONVERTER ?? "libreoffice"
+  try {
+    await writeFile(inputPath, xlsx)
+    await execFileAsync(converter, ["--headless", "--convert-to", "pdf", "--outdir", directory, inputPath], { timeout: 60_000 })
+    return await readFile(outputPath)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 }

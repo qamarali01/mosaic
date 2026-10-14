@@ -48,6 +48,16 @@ npm run dev
 
 Server starts at `http://localhost:3001`
 
+### Run the document worker
+
+In a separate terminal, run:
+
+```bash
+npm run worker
+```
+
+The worker consumes `generated_documents` rows with status `queued`, populates the configured XLSX template, converts the workbook to PDF using headless LibreOffice, and uploads both files to the private `export-documents` bucket.
+
 ### Health Check
 
 ```bash
@@ -851,6 +861,7 @@ railway up
 | `RAILWAY_PUBLIC_DOMAIN` | Auto | Public domain for OAuth issuer |
 | `MOSAIC_INVOICE_TEMPLATE` | No | Absolute path to the approved invoice/pro-forma XLSX template |
 | `MOSAIC_PL_TEMPLATE` | No | Absolute path to the approved packing-list XLSX template |
+| `MOSAIC_PDF_CONVERTER` | No | PDF converter binary; defaults to `libreoffice` |
 
 ---
 
