@@ -4,9 +4,22 @@ import { supabase } from "../supabase.js"
 import { requireRole, type McpContext } from "../context.js"
 import { logMcpAudit } from "../utils/audit.js"
 import { mcpError, mcpSuccess } from "../utils/errors.js"
+import { createInvoiceXlsx, createPackingXlsx, createSimplePdf } from "../document-generator.js"
 
 const documentTypes = ["buyer_purchase_order", "proforma_invoice", "commercial_invoice", "packing_list", "shipping_bill", "leo_copy", "bill_of_lading", "air_waybill", "e_way_bill", "certificate_of_origin", "insurance_certificate", "inward_remittance", "ebrc", "other"] as const
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+const cartonItemSchema = z.object({ order_item_id: z.string().uuid(), quantity: z.number().int().positive() })
+const cartonSchema = z.object({
+  carton_number: z.string().min(1).max(50),
+  quantity: z.number().int().positive().default(1),
+  length: z.number().nonnegative().nullable().optional(),
+  width: z.number().nonnegative().nullable().optional(),
+  height: z.number().nonnegative().nullable().optional(),
+  dimension_unit: z.string().max(10).default("in"),
+  gross_weight_kg: z.number().nonnegative(),
+  notes: z.string().max(1000).nullable().optional(),
+  items: z.array(cartonItemSchema).min(1),
+})
 
 function requireSales(ctx: McpContext) {
   try {
@@ -17,7 +30,192 @@ function requireSales(ctx: McpContext) {
   }
 }
 
+async function generateQueuedDocument(documentId: string, kind: "proforma" | "commercial_invoice" | "packing_list", quoteId: string | undefined, shipmentId: string | undefined, proposalId: string | undefined) {
+  await supabase.from("generated_documents").update({ status: "processing" }).eq("id", documentId)
+  try {
+    let xlsx: Buffer
+    let pdf: Buffer
+    if (kind === "packing_list") {
+      const { data: proposal } = await supabase.from("packing_proposals").select("shipment_id, extracted_data").eq("id", proposalId!).eq("status", "confirmed").single()
+      const { data: shipment } = await supabase.from("shipments").select("shipment_number, customer:customers(name)").eq("id", shipmentId!).single()
+      if (!proposal || !shipment) throw new Error("Confirmed packing proposal or shipment not found")
+      const extracted = proposal.extracted_data as { cartons: Array<{ carton_number: string; quantity: number; gross_weight_kg: number; dimension_unit: string; length?: number | null; width?: number | null; height?: number | null; items: Array<{ order_item_id: string; quantity: number }> }> }
+      const itemIds = extracted.cartons.flatMap((carton) => carton.items.map((item) => item.order_item_id))
+      const { data: items } = await supabase.from("order_items").select("id, customer_sku, product:products(internal_sku)").in("id", itemIds)
+      const itemMap = new Map((items ?? []).map((item) => [item.id, item]))
+      const cartons = extracted.cartons.map((carton) => ({
+        cartonNumber: carton.carton_number,
+        quantity: carton.quantity,
+        itemCodes: carton.items.map((item) => itemMap.get(item.order_item_id)?.customer_sku ?? "UNKNOWN").join(", "),
+        grossWeightKg: carton.gross_weight_kg,
+        netWeightKg: Math.max(0, carton.gross_weight_kg - 2.5),
+        dimensions: [carton.length, carton.width, carton.height].filter((value) => value != null).join(" x ") + (carton.dimension_unit ? ` ${carton.dimension_unit}` : ""),
+      }))
+      const customer = (shipment.customer as unknown as { name?: string } | null)?.name ?? ""
+      xlsx = await createPackingXlsx({ invoiceNumber: shipment.shipment_number, date: new Date().toISOString().slice(0, 10), consignee: customer, cartons })
+      pdf = await createSimplePdf("PACKING LIST", cartons.map((carton) => `Carton ${carton.cartonNumber}: ${carton.itemCodes} | ${carton.quantity} pcs | ${carton.grossWeightKg} kg gross | ${carton.dimensions}`))
+    } else {
+      let resolvedQuoteId = quoteId
+      if (!resolvedQuoteId && shipmentId) {
+        const { data: membership } = await supabase.from("shipment_orders").select("order:orders(quote_id)").eq("shipment_id", shipmentId).limit(1).maybeSingle()
+        resolvedQuoteId = (membership?.order as unknown as { quote_id?: string | null } | null)?.quote_id ?? undefined
+      }
+      const { data: quote } = resolvedQuoteId ? await supabase.from("quotes").select("quote_number, customer:customers(name), items:quote_items(customer_sku, customer_description, quantity, unit_price, currency, product:products(internal_sku,name))").eq("id", resolvedQuoteId).single() : { data: null }
+      let customer = (quote?.customer as unknown as { name?: string } | null)?.name ?? ""
+      let lines = (quote?.items ?? []).map((item) => ({ itemCode: item.customer_sku, description: item.customer_description ?? (item.product as unknown as { name?: string } | null)?.name ?? "", size: "", quantity: item.quantity, rate: item.unit_price, currency: item.currency }))
+      let invoiceNumber = quote?.quote_number ?? null
+      if (!quote && shipmentId) {
+        const { data: shipment } = await supabase.from("shipments").select("shipment_number, customer:customers(name)").eq("id", shipmentId).single()
+        const { data: memberships } = await supabase.from("shipment_orders").select("order_id").eq("shipment_id", shipmentId)
+        const { data: orderItems } = await supabase.from("order_items").select("customer_sku, customer_description, quantity, unit_price, currency, product:products(name)").in("order_id", (memberships ?? []).map((membership) => membership.order_id))
+        customer = (shipment?.customer as unknown as { name?: string } | null)?.name ?? ""
+        invoiceNumber = shipment?.shipment_number ?? null
+        lines = (orderItems ?? []).map((item) => ({ itemCode: item.customer_sku, description: item.customer_description ?? (item.product as unknown as { name?: string } | null)?.name ?? "", size: "", quantity: item.quantity, rate: item.unit_price, currency: item.currency }))
+      }
+      if (!lines.length) throw new Error("No invoice lines found")
+      xlsx = await createInvoiceXlsx({ title: kind === "proforma" ? "Proforma Invoice" : "Invoice", invoiceNumber: kind === "proforma" ? null : invoiceNumber, date: new Date().toISOString().slice(0, 10), consignee: customer, currency: lines[0]?.currency ?? "USD", lines })
+      pdf = await createSimplePdf(kind === "proforma" ? "PROFORMA INVOICE" : "COMMERCIAL INVOICE", lines.map((line) => `${line.itemCode} | ${line.description} | ${line.quantity} | ${line.rate}`))
+    }
+    const base = `generated/${documentId}`
+    const xlsxPath = `${base}.xlsx`
+    const pdfPath = `${base}.pdf`
+    const xlsxUpload = await supabase.storage.from("export-documents").upload(xlsxPath, xlsx, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", upsert: false })
+    if (xlsxUpload.error) throw new Error(xlsxUpload.error.message)
+    const pdfUpload = await supabase.storage.from("export-documents").upload(pdfPath, pdf, { contentType: "application/pdf", upsert: false })
+    if (pdfUpload.error) throw new Error(pdfUpload.error.message)
+    await supabase.from("generated_documents").update({ status: "completed", xlsx_storage_path: xlsxPath, pdf_storage_path: pdfPath, completed_at: new Date().toISOString() }).eq("id", documentId)
+    return { status: "completed", xlsx_storage_path: xlsxPath, pdf_storage_path: pdfPath }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Document generation failed"
+    await supabase.from("generated_documents").update({ status: "failed", error_message: message }).eq("id", documentId)
+    return { status: "failed", error: message }
+  }
+}
+
 export function registerExportDocumentTools(server: McpServer, ctx: McpContext) {
+  server.tool("create_shipment", "Create a shipment for one consignee. A shipment can contain multiple orders for that same customer.", {
+    shipment_number: z.string().min(1).max(100),
+    customer_id: z.string().uuid(),
+    order_ids: z.array(z.string().uuid()).min(1),
+    transport_mode: z.string().max(50).optional(),
+    shipment_date: z.string().date().optional(),
+    place_of_receipt: z.string().max(200).optional(),
+    port_of_loading: z.string().max(200).optional(),
+    port_of_discharge: z.string().max(200).optional(),
+    final_destination: z.string().max(200).optional(),
+    notes: z.string().max(2000).optional(),
+  }, async (input) => {
+    const denied = requireSales(ctx)
+    if (denied) return denied
+    const { data: orders, error: orderError } = await supabase.from("orders").select("id, customer_id").in("id", input.order_ids)
+    if (orderError) return mcpError(orderError.message)
+    if (!orders || orders.length !== input.order_ids.length) return mcpError("One or more orders were not found")
+    if (orders.some((order) => order.customer_id !== input.customer_id)) return mcpError("All orders in a shipment must have the same consignee")
+    const { data: shipment, error } = await supabase.from("shipments").insert({
+      shipment_number: input.shipment_number,
+      customer_id: input.customer_id,
+      transport_mode: input.transport_mode,
+      shipment_date: input.shipment_date,
+      place_of_receipt: input.place_of_receipt,
+      port_of_loading: input.port_of_loading,
+      port_of_discharge: input.port_of_discharge,
+      final_destination: input.final_destination,
+      notes: input.notes,
+      created_by: ctx.userId,
+    }).select().single()
+    if (error) return mcpError(error.message)
+    const { error: membershipError } = await supabase.from("shipment_orders").insert(input.order_ids.map((order_id) => ({ shipment_id: shipment.id, order_id })))
+    if (membershipError) {
+      await supabase.from("shipments").delete().eq("id", shipment.id)
+      return mcpError(membershipError.message)
+    }
+    await logMcpAudit({ tableName: "shipments", recordId: shipment.id, action: "mcp_create", newData: shipment, ctx })
+    return mcpSuccess(shipment)
+  })
+
+  server.tool("get_shipment_packing_context", "Get the shipment orders and line items Claude should use to interpret a handwritten packing-list image.", {
+    shipment_id: z.string().uuid(),
+  }, async (input) => {
+    const { data, error } = await supabase.from("shipment_orders").select("order_id, order:orders(id,order_number,customer_id,items:order_items(id,product_id,customer_sku,customer_description,quantity,unit_price,currency,product:products(internal_sku,name)))").eq("shipment_id", input.shipment_id)
+    if (error) return mcpError(error.message)
+    return mcpSuccess({ shipment_id: input.shipment_id, orders: data ?? [], instruction: "Match handwriting to these order items. Do not invent an item code; return ambiguities for confirmation." })
+  })
+
+  server.tool("prepare_packing_proposal", "Save Claude's normalized extraction from a handwritten packing list for human review. This does not create official cartons or documents.", {
+    shipment_id: z.string().uuid(),
+    source_filename: z.string().max(255).optional(),
+    extraction_notes: z.string().max(5000).optional(),
+    cartons: z.array(cartonSchema).min(1),
+  }, async (input) => {
+    const denied = requireSales(ctx)
+    if (denied) return denied
+    const { data: memberships } = await supabase.from("shipment_orders").select("order_id").eq("shipment_id", input.shipment_id)
+    if (!memberships?.length) return mcpError("Shipment has no orders")
+    const orderIds = memberships.map((row) => row.order_id)
+    const { data: items } = await supabase.from("order_items").select("id").in("order_id", orderIds)
+    const valid = new Set((items ?? []).map((item) => item.id))
+    const invalid = input.cartons.flatMap((carton) => carton.items.filter((item) => !valid.has(item.order_item_id)))
+    if (invalid.length) return mcpError("Proposal contains an item that is not part of the shipment")
+    const { data: latest } = await supabase.from("packing_proposals").select("revision").eq("shipment_id", input.shipment_id).order("revision", { ascending: false }).limit(1).maybeSingle()
+    const { data, error } = await supabase.from("packing_proposals").insert({ shipment_id: input.shipment_id, revision: (latest?.revision ?? 0) + 1, source_filename: input.source_filename ?? null, extraction_notes: input.extraction_notes ?? null, extracted_data: { cartons: input.cartons, order_ids: orderIds }, created_by: ctx.userId }).select("id, shipment_id, revision, status, extracted_data").single()
+    if (error) return mcpError(error.message)
+    return mcpSuccess({ proposal: data, confirmation_required: true, instruction: "Show the carton table to the user and obtain explicit confirmation before calling confirm_packing_proposal." })
+  })
+
+  server.tool("confirm_packing_proposal", "Confirm an exact packing proposal after the user has reviewed it. The confirmation phrase must be CONFIRM_PACKING_PROPOSAL.", {
+    proposal_id: z.string().uuid(),
+    confirmation_phrase: z.literal("CONFIRM_PACKING_PROPOSAL"),
+  }, async (input) => {
+    const denied = requireSales(ctx)
+    if (denied) return denied
+    const { data: proposal } = await supabase.from("packing_proposals").select("*").eq("id", input.proposal_id).single()
+    if (!proposal || proposal.status !== "pending_review") return mcpError("Packing proposal is not awaiting review")
+    const extracted = proposal.extracted_data as { cartons?: Array<z.infer<typeof cartonSchema>> }
+    if (!extracted.cartons?.length) return mcpError("Proposal has no cartons")
+    const { data: cartons, error } = await supabase.from("shipment_cartons").insert(extracted.cartons.map((carton) => ({ shipment_id: proposal.shipment_id, carton_number: carton.carton_number, quantity: carton.quantity, length: carton.length ?? null, width: carton.width ?? null, height: carton.height ?? null, dimension_unit: carton.dimension_unit, gross_weight_kg: carton.gross_weight_kg, tare_weight_kg: 2.5, notes: carton.notes ?? null }))).select("id")
+    if (error || !cartons) return mcpError(error?.message ?? "Could not save cartons")
+    const cartonItems = cartons.flatMap((carton, index) => extracted.cartons![index].items.map((item) => ({ carton_id: carton.id, order_item_id: item.order_item_id, quantity: item.quantity })))
+    const { error: itemError } = await supabase.from("shipment_carton_items").insert(cartonItems)
+    if (itemError) return mcpError(itemError.message)
+    const { error: updateError } = await supabase.from("packing_proposals").update({ status: "confirmed", confirmed_at: new Date().toISOString(), confirmed_by: ctx.userId }).eq("id", proposal.id)
+    if (updateError) return mcpError(updateError.message)
+    await logMcpAudit({ tableName: "packing_proposals", recordId: proposal.id, action: "mcp_update", newData: { status: "confirmed" }, ctx })
+    return mcpSuccess({ confirmed: true, shipment_id: proposal.shipment_id, carton_count: cartons.length })
+  })
+
+  server.tool("queue_document_generation", "Queue a pro forma, commercial invoice, or confirmed packing list for the document worker.", {
+    kind: z.enum(["proforma", "commercial_invoice", "packing_list"]),
+    quote_id: z.string().uuid().optional(),
+    shipment_id: z.string().uuid().optional(),
+    proposal_id: z.string().uuid().optional(),
+  }, async (input) => {
+    const denied = requireSales(ctx)
+    if (denied) return denied
+    if (input.kind === "proforma" && !input.quote_id) return mcpError("quote_id is required for a pro forma")
+    if (input.kind === "commercial_invoice" && !input.shipment_id) return mcpError("shipment_id is required for a commercial invoice")
+    if (input.kind === "packing_list" && !input.proposal_id) return mcpError("A confirmed proposal_id is required for a packing list")
+    if (input.proposal_id) {
+      const { data: proposal } = await supabase.from("packing_proposals").select("status").eq("id", input.proposal_id).single()
+      if (proposal?.status !== "confirmed") return mcpError("Packing proposal must be confirmed before generation")
+    }
+    const { data, error } = await supabase.from("generated_documents").insert({ kind: input.kind, quote_id: input.quote_id ?? null, shipment_id: input.shipment_id ?? null, proposal_id: input.proposal_id ?? null, source_snapshot: input, created_by: ctx.userId }).select("id, kind, status").single()
+    if (error) return mcpError(error.message)
+    const generated = await generateQueuedDocument(data.id, input.kind, input.quote_id, input.shipment_id, input.proposal_id)
+    return mcpSuccess({ ...data, ...generated })
+  })
+
+  server.tool("get_generated_document", "Get a generated document and fresh five-minute download URLs for its XLSX and PDF files.", {
+    document_id: z.string().uuid(),
+  }, async (input) => {
+    const { data, error } = await supabase.from("generated_documents").select("*").eq("id", input.document_id).single()
+    if (error || !data) return mcpError("Generated document not found")
+    const [xlsx, pdf] = await Promise.all([
+      data.xlsx_storage_path ? supabase.storage.from("export-documents").createSignedUrl(data.xlsx_storage_path, 300) : Promise.resolve({ data: null }),
+      data.pdf_storage_path ? supabase.storage.from("export-documents").createSignedUrl(data.pdf_storage_path, 300) : Promise.resolve({ data: null }),
+    ])
+    return mcpSuccess({ ...data, xlsx_download_url: xlsx.data?.signedUrl ?? null, pdf_download_url: pdf.data?.signedUrl ?? null })
+  })
+
   server.tool("list_order_shipments", "List export shipments and their key customs/transport references for an order.", {
     order_id: z.string().uuid(),
   }, async (input) => {

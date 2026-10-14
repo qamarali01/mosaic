@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { createClient } from "@/lib/supabase/client"
-import { createExportDocument, createOrderShipment, deleteExportDocument, getExportDocumentDownloadUrl } from "@/lib/actions/export-documents"
+import { createExportDocument, deleteExportDocument, getExportDocumentDownloadUrl } from "@/lib/actions/export-documents"
+import { createShipmentForOrder } from "@/lib/actions/shipment-ui"
 import type { ExportDocument, ExportDocumentType, OrderShipment } from "@/types"
 
 const documentTypes: Array<{ value: ExportDocumentType; label: string }> = [
@@ -50,7 +51,7 @@ export function ExportDocuments({ orderId, shipments, documents }: { orderId: st
 
   function submitShipment(formData: FormData) {
     startTransition(async () => {
-      const result = await createOrderShipment(orderId, {
+      const result = await createShipmentForOrder(orderId, {
         shipment_number: String(formData.get("shipment_number") ?? ""),
         transport_mode: String(formData.get("transport_mode") ?? "") || null,
         shipment_date: String(formData.get("shipment_date") ?? "") || null,
@@ -66,7 +67,7 @@ export function ExportDocuments({ orderId, shipments, documents }: { orderId: st
       }
       toast.success("Shipment added")
       setShipmentOpen(false)
-      router.refresh()
+      router.push(`/shipments/${result.data.id}`)
     })
   }
 

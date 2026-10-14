@@ -849,6 +849,8 @@ railway up
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Service role key (bypasses RLS) |
 | `MCP_PORT` | No | Server port (default: 3001) |
 | `RAILWAY_PUBLIC_DOMAIN` | Auto | Public domain for OAuth issuer |
+| `MOSAIC_INVOICE_TEMPLATE` | No | Absolute path to the approved invoice/pro-forma XLSX template |
+| `MOSAIC_PL_TEMPLATE` | No | Absolute path to the approved packing-list XLSX template |
 
 ---
 

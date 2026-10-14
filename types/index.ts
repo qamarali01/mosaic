@@ -29,6 +29,9 @@ export type ExportDocumentType =
   | "ebrc"
   | "other"
 export type OrderNumberType = "customer_po" | "internal" | "other"
+export type PackingProposalStatus = "pending_review" | "confirmed" | "rejected"
+export type GeneratedDocumentStatus = "queued" | "processing" | "completed" | "failed"
+export type GeneratedDocumentKind = "proforma" | "commercial_invoice" | "packing_list"
 
 // ─── User ────────────────────────────────────────────────────────────────────
 
@@ -268,6 +271,42 @@ export interface OrderWithRelations extends Order {
   items: OrderItemWithProduct[]
   shipments?: OrderShipment[]
   export_documents?: ExportDocument[]
+}
+
+export interface Shipment {
+  id: string
+  shipment_number: string
+  customer_id: string
+  status: ShipmentStatus
+  transport_mode: string | null
+  shipment_date: string | null
+  shipping_bill_number: string | null
+  shipping_bill_date: string | null
+  leo_date: string | null
+  bill_of_lading_or_awb_number: string | null
+  vessel_or_flight_number: string | null
+  place_of_receipt: string | null
+  port_of_loading: string | null
+  port_of_discharge: string | null
+  final_destination: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ShipmentCarton {
+  id: string
+  shipment_id: string
+  carton_number: string
+  quantity: number
+  length: number | null
+  width: number | null
+  height: number | null
+  dimension_unit: string
+  gross_weight_kg: number
+  tare_weight_kg: number
+  notes: string | null
 }
 
 export interface OrderItemWithProduct extends OrderItem {

@@ -24,6 +24,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   assigned:      { label: "Assigned",      className: "bg-[#B8C8D8] text-[#1E2E3E] border-[#2C3E50] dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-800" },
   in_progress:   { label: "In Progress",   className: "bg-[#E8D5A0] text-[#6B4A10] border-[#B08A3E] dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800" },
   completed:     { label: "Completed",     className: "bg-[#C8DDD0] text-[#2E5040] border-[#4A6B54] dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800" },
+  documents_complete: { label: "Documents Complete", className: "bg-[#C8DDD0] text-[#2E5040] border-[#4A6B54] dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800" },
 }
 
 interface StatusBadgeProps {

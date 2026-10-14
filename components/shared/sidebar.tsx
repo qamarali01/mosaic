@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Paintbrush,
+  Truck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/artisans", label: "Artisans", icon: Paintbrush, roles: ["admin", "sales", "viewer"] },
   { href: "/quotes", label: "Quotes", icon: FileText, roles: ["admin", "sales", "viewer"] },
   { href: "/orders", label: "Orders", icon: ShoppingCart, roles: ["admin", "sales", "viewer"] },
+  { href: "/shipments", label: "Shipments", icon: Truck, roles: ["admin", "sales", "viewer"] },
   { href: "/settings/users", label: "Settings", icon: Settings, roles: ["admin"] },
 ]
 

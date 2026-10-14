@@ -82,7 +82,7 @@ app.all(
     const ctx = buildContextFromAuthInfo(authInfo)
 
     const incomingSessionId = req.headers["mcp-session-id"] as string | undefined
-    let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined
+    const session = incomingSessionId ? sessions.get(incomingSessionId) : undefined
 
     if (session) {
       // Reuse existing session

@@ -40,6 +40,7 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { PageHeader } from "@/components/shared/page-header"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { createQuote, updateQuote, updateQuoteStatus } from "@/lib/actions/quotes"
+import { queueGeneratedDocument } from "@/lib/actions/shipment-workflow"
 import { createOrderFromQuote } from "@/lib/actions/orders"
 import { getMappingsByCustomer } from "@/lib/actions/customers"
 import { toast } from "sonner"
@@ -259,6 +260,15 @@ export function QuoteBuilder({ customers, quote }: QuoteBuilderProps) {
     })
   }
 
+  function handleProforma() {
+    if (!quote) return
+    startTransition(async () => {
+      const result = await queueGeneratedDocument({ kind: "proforma", quoteId: quote.id })
+      if (result.success) toast.success("Pro forma is being prepared")
+      else toast.error(result.error)
+    })
+  }
+
   return (
     <>
       <PageHeader
@@ -273,6 +283,7 @@ export function QuoteBuilder({ customers, quote }: QuoteBuilderProps) {
               <ShoppingCart className="h-4 w-4" /> Convert to Order
             </Button>
           )}
+          {isEditing && <Button size="sm" variant="outline" onClick={handleProforma} disabled={isPending}>Preview Pro Forma</Button>}
           {isEditing && STATUS_TRANSITIONS[quote.status]?.length > 0 && (
             <Button size="sm" variant="outline" onClick={() => setStatusAction(STATUS_TRANSITIONS[quote.status][0])}>
               {STATUS_LABELS[quote.status]}
