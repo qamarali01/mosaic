@@ -11,6 +11,7 @@ import {
 } from "@/types"
 import { productSchema } from "@/lib/validations/products"
 import { logAudit } from "@/lib/utils/audit"
+import { ilikeAnyFilter } from "@/lib/utils"
 
 export async function getProducts(
   params: PaginationParams = {}
@@ -27,7 +28,7 @@ export async function getProducts(
 
   if (status !== "all") query = query.eq("status", status)
   if (search) {
-    query = query.or(`name.ilike.%${search}%,internal_sku.ilike.%${search}%`)
+    query = query.or(ilikeAnyFilter(["name", "internal_sku"], search))
   }
 
   const from = (page - 1) * pageSize

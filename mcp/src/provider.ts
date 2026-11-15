@@ -10,6 +10,8 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js"
 import {
   InvalidGrantError,
+  InvalidTokenError,
+  TooManyRequestsError,
   UnsupportedGrantTypeError,
 } from "@modelcontextprotocol/sdk/server/auth/errors.js"
 import { supabase } from "./supabase.js"
@@ -62,14 +64,35 @@ class MosaicClientsStore implements OAuthRegisteredClientsStore {
 
 // ── Authorize HTML ─────────────────────────────────────────────────────────────
 
+// Every value interpolated into the authorize page comes from the OAuth request
+// (state, redirect_uri, client metadata) and must be escaped to prevent XSS.
+function escapeHtml(value: string | undefined | null): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function redirectHost(redirectUri: string): string {
+  try {
+    return new URL(redirectUri).host || redirectUri
+  } catch {
+    return redirectUri
+  }
+}
+
 function authorizeHtml(params: {
   state: string
   codeChallenge: string
   codeChallengeMethod: string
   clientId: string
+  clientName?: string
   redirectUri: string
   error?: string
 }): string {
+  const e = escapeHtml
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -133,6 +156,17 @@ function authorizeHtml(params: {
       color: #8B3A2F;
       margin-bottom: 16px;
     }
+    .dest {
+      background: #FDF8F0;
+      border: 1px solid #D8C8B0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #4A4538;
+      line-height: 1.5;
+      margin-bottom: 16px;
+      word-break: break-all;
+    }
     .hint { font-size: 12px; color: #8A7A60; margin-top: 16px; text-align: center; }
   </style>
 </head>
@@ -140,14 +174,15 @@ function authorizeHtml(params: {
   <div class="card">
     <h1>Connect Claude to Mosaic</h1>
     <p>Enter your Mosaic API key to give Claude access to your products, orders, and artisans.</p>
-    ${params.error ? `<div class="error">${params.error}</div>` : ""}
+    <div class="dest">Requested by <strong>${e(params.clientName || "an unnamed client")}</strong><br />Your key will be sent to <strong>${e(redirectHost(params.redirectUri))}</strong>. Only continue if you started this connection and trust this site.</div>
+    ${params.error ? `<div class="error">${e(params.error)}</div>` : ""}
     <form method="POST">
       <input type="hidden" name="response_type" value="code" />
-      <input type="hidden" name="state" value="${params.state ?? ""}" />
-      <input type="hidden" name="code_challenge" value="${params.codeChallenge}" />
-      <input type="hidden" name="code_challenge_method" value="${params.codeChallengeMethod}" />
-      <input type="hidden" name="client_id" value="${params.clientId}" />
-      <input type="hidden" name="redirect_uri" value="${params.redirectUri}" />
+      <input type="hidden" name="state" value="${e(params.state ?? "")}" />
+      <input type="hidden" name="code_challenge" value="${e(params.codeChallenge)}" />
+      <input type="hidden" name="code_challenge_method" value="${e(params.codeChallengeMethod)}" />
+      <input type="hidden" name="client_id" value="${e(params.clientId)}" />
+      <input type="hidden" name="redirect_uri" value="${e(params.redirectUri)}" />
       <label for="api_key">API Key</label>
       <input type="password" id="api_key" name="api_key" placeholder="msc_..." autocomplete="off" autofocus />
       <button type="submit">Authorize</button>
@@ -156,6 +191,46 @@ function authorizeHtml(params: {
   </div>
 </body>
 </html>`
+}
+
+// ── Key lookup ─────────────────────────────────────────────────────────────────
+
+const ROLE_ORDER: Record<UserRole, number> = { viewer: 0, sales: 1, admin: 2 }
+
+interface ResolvedKey {
+  id: string
+  user_id: string
+  name: string
+  role: UserRole
+}
+
+/**
+ * Look up an API key by hash and return it with its *effective* role:
+ * the lower of the role the key was created with and the owner's current role.
+ * This way demoting a user immediately demotes every key they created.
+ * Returns null if the key does not exist or its owner no longer has a profile.
+ */
+async function resolveApiKey(rawKey: string): Promise<ResolvedKey | null> {
+  const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex")
+  const { data: keyRecord } = await supabase
+    .from("mcp_api_keys")
+    .select("id, user_id, name, role")
+    .eq("key_hash", keyHash)
+    .single()
+  if (!keyRecord || !keyRecord.user_id) return null
+
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", keyRecord.user_id)
+    .single()
+  if (!profile) return null
+
+  const keyRole = keyRecord.role as UserRole
+  const userRole = profile.role as UserRole
+  const role = ROLE_ORDER[userRole] < ROLE_ORDER[keyRole] ? userRole : keyRole
+
+  return { id: keyRecord.id, user_id: keyRecord.user_id, name: keyRecord.name, role }
 }
 
 // ── MosaicOAuthProvider ────────────────────────────────────────────────────────
@@ -189,6 +264,7 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
             codeChallenge: params.codeChallenge,
             codeChallengeMethod: "S256",
             clientId: client.client_id,
+            clientName: client.client_name,
             redirectUri: params.redirectUri,
             error: "Invalid key format. Keys start with msc_",
           })
@@ -196,12 +272,7 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
         return
       }
 
-      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex")
-      const { data: keyRecord } = await supabase
-        .from("mcp_api_keys")
-        .select("id, user_id, name, role")
-        .eq("key_hash", keyHash)
-        .single()
+      const keyRecord = await resolveApiKey(rawKey)
 
       if (!keyRecord) {
         res.send(
@@ -210,6 +281,7 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
             codeChallenge: params.codeChallenge,
             codeChallengeMethod: "S256",
             clientId: client.client_id,
+            clientName: client.client_name,
             redirectUri: params.redirectUri,
             error: "Invalid or revoked API key. Please check your key and try again.",
           })
@@ -241,6 +313,7 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
           codeChallenge: params.codeChallenge,
           codeChallengeMethod: "S256",
           clientId: client.client_id,
+          clientName: client.client_name,
           redirectUri: params.redirectUri,
         })
       )
@@ -288,22 +361,16 @@ export class MosaicOAuthProvider implements OAuthServerProvider {
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
-    const keyHash = crypto.createHash("sha256").update(token).digest("hex")
-
-    const { data: keyRecord } = await supabase
-      .from("mcp_api_keys")
-      .select("id, user_id, name, role")
-      .eq("key_hash", keyHash)
-      .single()
+    const keyRecord = await resolveApiKey(token)
 
     if (!keyRecord) {
-      throw new Error("Invalid or revoked API key")
+      throw new InvalidTokenError("Invalid or revoked API key")
     }
 
     // Rate limiting
-    const limited = checkRateLimit(keyRecord.id, keyRecord.role as UserRole)
+    const limited = checkRateLimit(keyRecord.id, keyRecord.role)
     if (limited) {
-      throw new Error(`Rate limit exceeded. Retry after ${limited} seconds.`)
+      throw new TooManyRequestsError(`Rate limit exceeded. Retry after ${limited} seconds.`)
     }
 
     // Update last_used_at fire-and-forget

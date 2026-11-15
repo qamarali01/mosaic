@@ -14,6 +14,7 @@ import {
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Package, Layers, Users, FileText, ShoppingCart, Paintbrush } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { ilikeAnyFilter } from "@/lib/utils"
 
 interface SearchResult {
   id: string
@@ -86,12 +87,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       const all: SearchResult[] = []
 
       const [products, collections, customers, artisans, quotes, orders, mappings] = await Promise.all([
-        supabase.from("products").select("id, internal_sku, name").or(`name.ilike.${q},internal_sku.ilike.${q}`).eq("status", "active").limit(5),
+        supabase.from("products").select("id, internal_sku, name").or(ilikeAnyFilter(["name", "internal_sku"], query)).eq("status", "active").limit(5),
         supabase.from("collections").select("id, name").ilike("name", q).eq("status", "active").limit(5),
         supabase.from("customers").select("id, name").ilike("name", q).eq("status", "active").limit(5),
         supabase.from("artisans").select("id, name, location").ilike("name", q).eq("status", "active").limit(5),
         supabase.from("quotes").select("id, quote_number, status").ilike("quote_number", q).limit(5),
-        supabase.from("orders").select("id, order_number, system_number, status").or(`order_number.ilike.${q},system_number.ilike.${q}`).limit(5),
+        supabase.from("orders").select("id, order_number, system_number, status").or(ilikeAnyFilter(["order_number", "system_number"], query)).limit(5),
         supabase.from("customer_product_mappings").select("id, customer_sku, product:products(id, name), customer:customers(name)").ilike("customer_sku", q).limit(5),
       ])
 

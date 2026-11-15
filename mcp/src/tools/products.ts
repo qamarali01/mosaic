@@ -4,6 +4,7 @@ import { supabase } from "../supabase.js"
 import { requireRole, type McpContext } from "../context.js"
 import { logMcpAudit } from "../utils/audit.js"
 import { mcpSuccess, mcpError } from "../utils/errors.js"
+import { ilikeAnyFilter } from "../utils/filters.js"
 
 export function registerProductTools(server: McpServer, ctx: McpContext) {
   // ── list_products ──────────────────────────────────────────────────────────
@@ -22,7 +23,7 @@ export function registerProductTools(server: McpServer, ctx: McpContext) {
         .select("*, collection:collections(id,name), images:product_images(url)", { count: "exact" })
 
       if (input.status !== "all") query = query.eq("status", input.status)
-      if (input.search) query = query.or(`name.ilike.%${input.search}%,internal_sku.ilike.%${input.search}%`)
+      if (input.search) query = query.or(ilikeAnyFilter(["name", "internal_sku"], input.search))
 
       const from = (input.page - 1) * input.page_size
       const { data, count, error } = await query.order("created_at", { ascending: false }).range(from, from + input.page_size - 1)

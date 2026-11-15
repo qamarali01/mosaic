@@ -12,7 +12,7 @@ import {
   PaginatedResult,
   PaginationParams,
 } from "@/types"
-import { generateSystemNumber } from "@/lib/utils"
+import { generateSystemNumber, ilikeAnyFilter } from "@/lib/utils"
 import { logAudit } from "@/lib/utils/audit"
 
 export async function getOrders(
@@ -26,7 +26,7 @@ export async function getOrders(
     .select(`*, customer:customers(id, name), quote:quotes(id, quote_number), items:order_items(*, product:products(id, internal_sku, name))`, { count: "exact" })
 
   if (status !== "all") query = query.eq("status", status)
-  if (search) query = query.or(`order_number.ilike.%${search}%,system_number.ilike.%${search}%`)
+  if (search) query = query.or(ilikeAnyFilter(["order_number", "system_number"], search))
 
   const from = (page - 1) * pageSize
   const { data, error, count } = await query
