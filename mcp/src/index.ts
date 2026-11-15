@@ -85,7 +85,18 @@ app.all(
     let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined
 
     if (session) {
-      // Reuse existing session
+      // A session belongs to the key that created it — refuse to let another key ride on it
+      if (session.ctx.keyId !== ctx.keyId) {
+        res.status(403).json({
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Session does not belong to this API key" },
+          id: null,
+        })
+        return
+      }
+      // Tools hold a reference to session.ctx, so refreshing it in place applies the
+      // key's current effective role (e.g. after the owner is demoted) to this session
+      Object.assign(session.ctx, ctx)
       session.lastUsed = Date.now()
       await session.transport.handleRequest(req, res, req.body)
     } else {
